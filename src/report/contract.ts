@@ -1,4 +1,5 @@
 import { EXIT_CODES } from '../exit-codes.js';
+import type { ReportCoverage } from './coverage.js';
 
 type ExecutionOutcome = 'passed' | 'findings' | 'inconclusive' | 'failed';
 
@@ -149,6 +150,11 @@ export interface ExecutionReport {
     generatedTests: number;
     confirmedFindings: number;
     inconclusiveFindings: number;
+    /** Every flow that is neither replay-confirmed nor a confirmed finding — it did not verify,
+     * the replay could not reproduce it, or the evidence was insufficient. A superset of
+     * `inconclusiveFindings`: it also covers journey flows that simply never replay-confirmed,
+     * which carry no finding at all. */
+    needsReview: number;
     errors: number;
     evidenceWarnings: number;
     coverageIncomplete: boolean;
@@ -158,6 +164,7 @@ export interface ExecutionReport {
   issues: ReportIssue[];
   runs: ReportRun[];
   findings: ReportFinding[];
+  coverage: ReportCoverage;
   artifacts: {
     reportJson: string;
     reportHtml: string;
@@ -178,6 +185,7 @@ export interface ExecutionReportInput {
   expectations: string[];
   generatedTests: number;
   artifacts: ExecutionReport['artifacts'];
+  coverage: ReportCoverage;
   issues?: ReportIssue[];
   runs: Array<{
     id: string;
@@ -234,6 +242,11 @@ export function buildExecutionReport(input: ExecutionReportInput): ExecutionRepo
   const findings = runs.flatMap((run) => run.findings);
   const confirmedFindings = findings.filter((finding) => finding.status === 'confirmed').length;
   const inconclusiveFindings = findings.filter((finding) => finding.status === 'inconclusive').length;
+  const needsReview = runs.reduce(
+    (total, run) =>
+      total + run.flows.filter((flow) => !flow.replayConfirmed && flow.finding?.status !== 'confirmed').length,
+    0,
+  );
   const errors = runs.filter((run) => Boolean(run.error)).length;
   const safetyBlockedRequests = runs.reduce((total, run) => total + run.safety.blockedRequests, 0);
   const runtimeErrors = runs.reduce(
@@ -280,6 +293,7 @@ export function buildExecutionReport(input: ExecutionReportInput): ExecutionRepo
       generatedTests: input.generatedTests,
       confirmedFindings,
       inconclusiveFindings,
+      needsReview,
       errors,
       evidenceWarnings: input.issues?.length ?? 0,
       coverageIncomplete,
@@ -289,6 +303,7 @@ export function buildExecutionReport(input: ExecutionReportInput): ExecutionRepo
     issues: input.issues ?? [],
     runs,
     findings,
+    coverage: input.coverage,
     artifacts: input.artifacts,
   };
 }

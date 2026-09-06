@@ -4,8 +4,10 @@ import type {
   ReportResponseVariantAudit,
   ReportRun,
   ReportRuntimeError,
+  ReportSafety,
   ReportStep,
 } from './contract.js';
+import type { ReportCoverageEndpoint, ReportCoverageGroup } from './coverage.js';
 
 /**
  * Renders report.html — an investigation board (persona case files -> flow evidence -> findings)
@@ -107,12 +109,14 @@ function outcomeStamp(report: ExecutionReport): { tone: string; label: string } 
   return { tone: 'success', label: 'passed — every confirmed flow verified cleanly' };
 }
 
+/** One consistent label for "we don't yet know if this works" — whether the cause is an
+ * inconclusive challenge finding, a replay that couldn't reproduce the flow, or a flow the agent
+ * itself never considered verified. The specific reason still shows in the note underneath;
+ * this chip only answers the one question a reader scans the board for. */
 function flowStatusChip(flow: ReportFlow): { tone: string; label: string } {
   if (flow.finding?.status === 'confirmed') return { tone: 'critical', label: 'finding confirmed' };
-  if (flow.finding?.status === 'inconclusive') return { tone: 'warning', label: 'finding inconclusive' };
   if (flow.replayConfirmed) return { tone: 'success', label: 'replay confirmed' };
-  if (flow.replayFailure) return { tone: 'warning', label: 'not confirmed' };
-  return { tone: 'muted', label: flow.discoveryVerified ? 'discovered' : 'unverified' };
+  return { tone: 'warning', label: 'needs review' };
 }
 
 /** `flow.id` for a discovered flow is always `<runId>-flow-<n>`; pull the ordinal back out to
@@ -293,6 +297,97 @@ function renderRunDetail(run: ReportRun, index: number, active: boolean): string
   </section>`;
 }
 
+/** Combines every run's own safety tally into one report-level view — a reader comparing
+ * personas doesn't care which run hit the block first, only that mutation requests were blocked
+ * by default and why coverage looks thinner than the application actually is. */
+function aggregateSafety(runs: ReportRun[]): ReportSafety {
+  const byMethod: Record<string, number> = {};
+  const samples: ReportSafety['samples'] = [];
+  const seen = new Set<string>();
+  let blockedRequests = 0;
+  let explorationBlocked = 0;
+  let replayBlocked = 0;
+  for (const run of runs) {
+    blockedRequests += run.safety.blockedRequests;
+    explorationBlocked += run.safety.explorationBlocked;
+    replayBlocked += run.safety.replayBlocked;
+    for (const [method, count] of Object.entries(run.safety.byMethod)) {
+      byMethod[method] = (byMethod[method] ?? 0) + count;
+    }
+    for (const sample of run.safety.samples) {
+      const key = `${sample.phase}:${sample.method}:${sample.url}`;
+      if (seen.has(key) || samples.length >= 10) continue;
+      seen.add(key);
+      samples.push(sample);
+    }
+  }
+  return { blockedRequests, explorationBlocked, replayBlocked, byMethod, samples, safetyRelatedRuntimeErrors: 0 };
+}
+
+function renderSafetyNote(safety: ReportSafety): string {
+  if (safety.blockedRequests === 0) return '';
+  const methodChips = Object.entries(safety.byMethod)
+    .map(([method, count]) => `<span class="chip muted mono">${escapeHtml(method)} ×${count}</span>`)
+    .join('');
+  const samples = safety.samples
+    .slice(0, 5)
+    .map((sample) => `<div class="runtime-issue mono">${escapeHtml(sample.method)} ${escapeHtml(sample.url)}</div>`)
+    .join('');
+  const warning = `<div class="note warning">
+    <span class="eyebrow">Safety policy blocked ${safety.blockedRequests} request${safety.blockedRequests === 1 ? '' : 's'}</span>
+    <span>Appwalk blocks POST/PUT/PATCH/DELETE by default, so mutation-heavy paths (checkout, forms, deletes) stay under-covered until you allow them. Pass <span class="mono">--allow-destructive</span> against a disposable environment to cover these too.</span>
+  </div>`;
+  const detail = `<div class="note muted safety-detail">
+    <span class="eyebrow">Blocked by method</span>
+    <div class="chip-group">${methodChips}</div>
+    <span class="eyebrow safety-examples-label">Examples</span>
+    ${samples}
+  </div>`;
+  return `${warning}${detail}`;
+}
+
+function renderCoverageEndpoint(endpoint: ReportCoverageEndpoint): string {
+  const statusText =
+    endpoint.errorVisits > 0
+      ? `<span class="text-critical">${endpoint.statuses.join(', ')}</span>`
+      : endpoint.statuses.length > 0
+        ? escapeHtml(endpoint.statuses.join(', '))
+        : '—';
+  return `<tr>
+    <td class="mono">${escapeHtml(endpoint.method)}</td>
+    <td class="mono">${escapeHtml(endpoint.path)}</td>
+    <td class="mono">${endpoint.visits}</td>
+    <td>${escapeHtml(endpoint.personas.join(', '))}</td>
+    <td>${statusText}</td>
+  </tr>`;
+}
+
+function renderCoverageGroup(group: ReportCoverageGroup): string {
+  const errorNote = group.errorVisits > 0 ? ` · <span class="text-critical">${group.errorVisits} error response${group.errorVisits === 1 ? '' : 's'}</span>` : '';
+  return `<div class="cov-group">
+    <div class="cov-group-head"><h3>${escapeHtml(group.prefix)}</h3>${metaRow([`${group.visits} request${group.visits === 1 ? '' : 's'}${errorNote}`])}</div>
+    <div class="cov-table-wrap"><table class="cov-table">
+      <thead><tr><th>Method</th><th>Path</th><th>Visits</th><th>Personas</th><th>Status</th></tr></thead>
+      <tbody>${group.endpoints.map(renderCoverageEndpoint).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function renderCoverageView(report: ExecutionReport): string {
+  const { coverage } = report;
+  const safety = aggregateSafety(report.runs);
+  const intro = `<p class="coverage-intro">${coverage.totalEndpoints} distinct endpoint${coverage.totalEndpoints === 1 ? '' : 's'} touched across ${coverage.totalVisits} request${coverage.totalVisits === 1 ? '' : 's'}, over ${report.summary.runs} persona run${report.summary.runs === 1 ? '' : 's'}.</p>`;
+  const groups =
+    coverage.groups.length > 0
+      ? coverage.groups.map(renderCoverageGroup).join('')
+      : `<p class="empty">No network activity was recorded.</p>`;
+  return `<section id="view-coverage">
+    ${intro}
+    ${renderSafetyNote(safety)}
+    <div class="coverage-groups">${groups}</div>
+  </section>`;
+}
+
 export function renderHtmlReport(report: ExecutionReport): string {
   const stamp = outcomeStamp(report);
   const cases = report.runs.map((run, index) => renderCase(run, index, index === 0)).join('');
@@ -330,14 +425,24 @@ ${REPORT_CSS}
     <div class="stat"><div class="n mono">${report.summary.runs}</div><div class="l">personas run</div></div>
     <div class="stat"><div class="n mono">${report.summary.flowsFound}</div><div class="l">flows discovered</div></div>
     <div class="stat"><div class="n mono">${report.summary.replayConfirmed}</div><div class="l">replay-confirmed</div></div>
+    <div class="stat"><div class="n mono">${report.summary.generatedTests}</div><div class="l">tests generated</div></div>
     <div class="stat"><div class="n mono">${report.summary.confirmedFindings}</div><div class="l">findings confirmed</div></div>
-    <div class="stat"><div class="n mono">${report.summary.inconclusiveFindings}</div><div class="l">needs review</div></div>
+    <div class="stat"><div class="n mono">${report.summary.needsReview}</div><div class="l">needs review</div></div>
   </div>
 
-  <div class="board">
-    <nav class="case-list" role="tablist" aria-label="Personas">${cases}</nav>
-    <div class="detail">${details}</div>
-  </div>
+  <nav class="top-tabs" role="tablist" aria-label="Report views">
+    <button class="top-tab" data-view="view-coverage" aria-current="true">Coverage</button>
+    <button class="top-tab" data-view="view-personas" aria-current="false">Personas</button>
+  </nav>
+
+  ${renderCoverageView(report)}
+
+  <section id="view-personas" hidden>
+    <div class="board">
+      <nav class="case-list" role="tablist" aria-label="Personas">${cases}</nav>
+      <div class="detail">${details}</div>
+    </div>
+  </section>
 
   <footer class="page-foot">
     <span>report.html</span>
@@ -346,6 +451,14 @@ ${REPORT_CSS}
 </div>
 
 <script>
+  document.querySelectorAll('.top-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.top-tab').forEach(function(t){ t.setAttribute('aria-current','false'); });
+      tab.setAttribute('aria-current','true');
+      document.getElementById('view-coverage').hidden = tab.dataset.view !== 'view-coverage';
+      document.getElementById('view-personas').hidden = tab.dataset.view !== 'view-personas';
+    });
+  });
   document.querySelectorAll('.case').forEach(function(btn){
     btn.addEventListener('click', function(){
       document.querySelectorAll('.case').forEach(function(b){ b.setAttribute('aria-current','false'); });
@@ -405,10 +518,25 @@ const REPORT_CSS = `
   .stamp.warning{ background:var(--warning-soft); color:var(--warning); border-color:color-mix(in srgb, var(--warning) 35%, transparent); }
   .stamp.critical{ background:var(--critical-soft); color:var(--critical); border-color:color-mix(in srgb, var(--critical) 35%, transparent); }
   .stamp .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
-  .stats{ display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:32px; }
+  .stats{ display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:24px; }
   .stat{ background:var(--surface); padding:18px 20px; }
   .stat .n{ font-family:"Fraunces",serif; font-size:34px; font-weight:560; line-height:1; }
   .stat .l{ margin-top:6px; color:var(--muted); font-size:12.5px; }
+  .top-tabs{ display:flex; gap:8px; margin-bottom:20px; border-bottom:1px solid var(--border); }
+  .top-tab{ font:inherit; font-weight:600; font-size:14px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; padding:10px 4px; margin-bottom:-1px; cursor:pointer; }
+  .top-tab[aria-current="true"]{ color:var(--accent); border-bottom-color:var(--accent); }
+  .coverage-intro{ color:var(--muted); font-size:13.5px; margin:0 0 16px; }
+  .safety-detail .chip-group{ flex-wrap:wrap; margin-bottom:10px; }
+  .safety-detail .safety-examples-label{ margin-top:2px; }
+  .safety-detail .runtime-issue{ color:var(--muted); font-size:12.5px; }
+  .coverage-groups{ display:flex; flex-direction:column; gap:16px; }
+  .cov-group{ background:var(--surface); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .cov-group-head{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:12px 18px; border-bottom:1px solid var(--border); }
+  .cov-group-head h3{ font-size:15.5px; margin:0; text-transform:capitalize; }
+  .cov-table-wrap{ overflow-x:auto; }
+  .cov-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .cov-table th{ text-align:left; color:var(--muted); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; padding:8px 18px; }
+  .cov-table td{ padding:7px 18px; border-top:1px dashed var(--border); vertical-align:top; }
   .board{ display:grid; grid-template-columns:250px 1fr; gap:28px; align-items:start; }
   .case-list{ display:flex; flex-direction:column; gap:8px; position:sticky; top:24px; }
   .case{ text-align:left; width:100%; cursor:pointer; border:1px solid var(--border); background:var(--surface); border-radius:6px; padding:13px 14px; display:flex; flex-direction:column; gap:6px; font:inherit; color:inherit; }

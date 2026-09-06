@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCoverageRuns, redactorForArgs } from '../../src/cli/orchestrate.js';
+import { createCoverageRuns, redactorForArgs, summarizeSafety } from '../../src/cli/orchestrate.js';
 import type { CliArgs } from '../../src/cli/args.js';
 
 function baseArgs(overrides: Partial<CliArgs> = {}): CliArgs {
@@ -76,4 +76,15 @@ test("redactorForArgs redacts a coverage run's own secrets, not just the global 
   const redacted = redactor.text('login attempt with persona-a-only-secret for persona-a@example.test');
   assert.doesNotMatch(redacted, /persona-a-only-secret/);
   assert.doesNotMatch(redacted, /persona-a@example\.test/);
+});
+
+test('summarizeSafety excludes a same-origin infrastructure beacon from the count and samples', () => {
+  const safety = summarizeSafety([
+    { phase: 'exploration', method: 'POST', url: 'https://example.test/api/cart/items' },
+    { phase: 'exploration', method: 'POST', url: 'https://example.test/cdn-cgi/rum' },
+    { phase: 'replay', method: 'DELETE', url: 'https://example.test/api/account' },
+  ]);
+  assert.equal(safety.blockedRequests, 2);
+  assert.deepEqual(safety.byMethod, { POST: 1, DELETE: 1 });
+  assert.ok(!safety.samples.some((sample) => sample.url.includes('cdn-cgi')));
 });

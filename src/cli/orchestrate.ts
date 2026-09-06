@@ -12,6 +12,7 @@ import type { ExpectationObservation } from '../types.js';
 import type { SafetyConfig } from '../safety/guard.js';
 import { installDestructiveActionGuard } from '../safety/guard.js';
 import { logError } from '../logging/logger.js';
+import { isInfrastructureUrl } from '../url.js';
 import { Redactor } from '../security/redaction.js';
 import type {
   ReportFlow,
@@ -99,7 +100,11 @@ export function runOutcome(run: ExplorationRun): {
   };
 }
 
-function summarizeSafety(events: SafetyEvent[]): ReportSafety {
+export function summarizeSafety(rawEvents: SafetyEvent[]): ReportSafety {
+  // A same-origin infrastructure beacon (see `isInfrastructureUrl`) isn't part of the target
+  // application — blocking it is real, but surfacing it as "blocked application traffic" would
+  // inflate the count and samples with noise no application decision ever produced.
+  const events = rawEvents.filter((event) => !isInfrastructureUrl(event.url));
   const byMethod: Record<string, number> = {};
   for (const event of events) byMethod[event.method] = (byMethod[event.method] ?? 0) + 1;
   const samples: ReportSafety['samples'] = [];

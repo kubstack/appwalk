@@ -9,6 +9,7 @@ import {
   type ReportStep,
 } from '../report/contract.js';
 import { renderHtmlReport } from '../report/html-report.js';
+import { buildCoverage } from '../report/coverage.js';
 import type { EvidenceEntry } from '../evidence/log.js';
 import { runOutcome, type ExplorationBatch, type ExplorationRun } from './orchestrate.js';
 
@@ -162,6 +163,9 @@ export function writeExecutionReport(
     expectations: batch.args.expectations,
     generatedTests,
     artifacts,
+    coverage: buildCoverage(
+      batch.runs.map((run) => ({ persona: run.args.personaName ?? run.runName, entries: run.allEntries })),
+    ),
     issues: batch.evidenceIssues.map((issue): ReportIssue => ({
       source: 'evidence',
       severity: 'warning',

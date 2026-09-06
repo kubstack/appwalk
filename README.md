@@ -10,6 +10,8 @@ Writing end-to-end coverage usually starts with a tester already knowing the exa
 
 The generated test is not based on an LLM description alone. A flow must be locally verified during exploration and then confirmed by deterministic replay before it is generated. When enabled, captured same-origin JSON responses can also be replayed as fixtures so dynamic data does not make the generated test depend on a changing backend response.
 
+Some personas explore the way a normal user would; others deliberately probe the application's defenses — invalid input, broken authentication, race conditions, network failures. When a probing persona's attempt to break something is itself replay-confirmed, it is reported as a finding, alongside the generated test suite. Findings are a secondary signal, not the point of running Appwalk: the primary output is always the confirmed regression test suite.
+
 ## How it works
 
 ```mermaid
@@ -20,21 +22,23 @@ flowchart LR
     C --> D[Replay in clean session]
     D --> E{Confirmed?}
     E -->|No| F[Report as unconfirmed or inconclusive]
-    E -->|Yes| G[Optional response scenarios]
+    E -->|Yes, journey or defended| G[Optional response scenarios]
+    E -->|Yes, challenge succeeded| K[Reported as finding]
     G --> H[Playwright test suite]
     D --> I[HTML and JSON report]
 ```
 
 The core terms are deliberately simple:
 
-| Term                | Meaning                                                                                                         |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Persona             | The behavior and risk lens used by the agent during exploration.                                                |
-| Scope               | A natural-language area or objective that guides exploration.                                                   |
-| Expectation         | A user-visible condition that should hold within the scope. Multiple expectations can be attached to one scope. |
-| Flow                | One meaningful sequence of browser actions with a terminal outcome.                                             |
-| Replay confirmation | Deterministic re-execution of a discovered flow in a clean session.                                             |
-| Response scenario   | A derived flow made by patching an observed JSON response and checking the resulting UI behavior.               |
+| Term                | Meaning                                                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Persona             | The behavior and risk lens used by the agent during exploration. Journey personas act as normal users; challenge personas deliberately probe defenses. |
+| Scope               | A natural-language area or objective that guides exploration.                                                                           |
+| Expectation         | A user-visible condition that should hold within the scope. Multiple expectations can be attached to one scope.                        |
+| Flow                | One meaningful sequence of browser actions with a terminal outcome.                                                                     |
+| Replay confirmation | Deterministic re-execution of a discovered flow in a clean session.                                                                     |
+| Finding             | A replay-confirmed case where a challenge persona's probing attempt succeeded — a potential application defect, reported alongside generated tests, not in place of them. |
+| Response scenario   | A derived flow made by patching an observed JSON response and checking the resulting UI behavior.                                       |
 
 ## Quick start
 

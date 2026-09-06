@@ -1,6 +1,7 @@
 import type { NetworkEntry, RuntimeErrorEntry } from '../evidence/recorder.js';
 import { looksLikeSuccessByNetwork, looksLikeSuccessBySnapshot, looksLikeSuccessByUrl } from './success.js';
 import type { ExpectationAssertion, ExpectationObservation } from '../types.js';
+import { isInfrastructureUrl } from '../url.js';
 
 export type VerificationMode =
   'completion' | 'rejection' | 'preservation' | 'stability' | 'recovery' | 'consistency' | 'visual' | 'removal';
@@ -30,24 +31,14 @@ const ALERT_PATTERN = /-\s*alert:/i;
 const INVALID_FIELD_PATTERN = /\[invalid\]/i;
 const CONSISTENCY_ASSERTIONS = new Set(['containsText', 'value', 'count', 'checked', 'unchecked']);
 const VISUAL_SIGNAL_PATTERN = /(?:^|\n)Layout:|content-overflows/i;
-// Cloudflare's own reserved path, injected same-origin on every site it fronts (a RUM analytics
-// beacon, speculation-rules pings, etc.) — not something any target application defines itself,
-// so excluding it isn't specific to one site. Same-origin filtering alone (as looksLikeSuccessByNetwork
-// already does) doesn't catch this: Cloudflare serves it from the app's own origin on purpose.
-const INFRASTRUCTURE_PATH = /^\/cdn-cgi\//i;
-
 function isApplicationRequest(entry: NetworkEntry): boolean {
-  try {
-    return !INFRASTRUCTURE_PATH.test(new URL(entry.url).pathname);
-  } catch {
-    return true;
-  }
+  return !isInfrastructureUrl(entry.url);
 }
 
 /**
  * A POST/PUT/PATCH/DELETE that actually succeeded — evidence a consequential action really went
  * through, not just that a request was attempted. Restricted to real application traffic: a
- * same-origin infrastructure beacon (Cloudflare's `/cdn-cgi/rum`) is also a "successful POST" by
+ * same-origin infrastructure beacon (see `isInfrastructureUrl`) is also a "successful POST" by
  * HTTP status alone, but firing on every page transition, not on anything the flow itself did.
  */
 function hasSuccessfulStateChange(network: NetworkEntry[]): boolean {

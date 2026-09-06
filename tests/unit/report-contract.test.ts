@@ -27,6 +27,7 @@ function reportInput(overrides: Partial<Parameters<typeof buildExecutionReport>[
       discovery: 'discovery.json',
       evidence: 'evidence.jsonl',
     },
+    coverage: { groups: [], totalEndpoints: 0, totalVisits: 0, totalErrorVisits: 0 },
     runs: [
       {
         id: 'run-1',
@@ -320,7 +321,7 @@ test('report.html explains a replay failure with its summarized reason, not the 
     ],
   });
   const html = renderHtmlReport(buildExecutionReport(input));
-  assert.match(html, /<span class="chip warning">not confirmed<\/span>/);
+  assert.match(html, /<span class="chip warning">needs review<\/span>/);
   assert.match(html, /A recorded action could not be completed in the clean replay session\./);
   assert.doesNotMatch(html, /Call log:/);
   assert.match(html, /Exploration action failed: locator\.click: Error: strict mode violation/);
