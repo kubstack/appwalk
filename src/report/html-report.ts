@@ -331,7 +331,7 @@ function aggregateSafety(runs: ReportRun[]): ReportSafety {
 function renderSafetyNote(safety: ReportSafety): string {
   if (safety.blockedRequests === 0) return '';
   const methodChips = Object.entries(safety.byMethod)
-    .map(([method, count]) => `<span class="chip muted mono">${escapeHtml(method)} ×${count}</span>`)
+    .map(([method, count]) => `<div class="runtime-issue mono">${escapeHtml(method)} ×${count}</div>`)
     .join('');
   const samples = safety.samples
     .slice(0, 5)
@@ -343,7 +343,7 @@ function renderSafetyNote(safety: ReportSafety): string {
   </div>`;
   const detail = `<div class="note muted safety-detail">
     <span class="eyebrow">Blocked by method</span>
-    <div class="chip-group">${methodChips}</div>
+    ${methodChips}
     <span class="eyebrow safety-examples-label">Examples</span>
     ${samples}
   </div>`;
@@ -533,8 +533,7 @@ const REPORT_CSS = `
   .top-tab{ font:inherit; font-weight:600; font-size:14px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; padding:10px 4px; margin-bottom:-1px; cursor:pointer; }
   .top-tab[aria-current="true"]{ color:var(--accent); border-bottom-color:var(--accent); }
   .coverage-intro{ color:var(--muted); font-size:13.5px; margin:0 0 16px; }
-  .safety-detail .chip-group{ flex-wrap:wrap; margin-bottom:10px; }
-  .safety-detail .safety-examples-label{ margin-top:2px; }
+  .safety-detail .safety-examples-label{ margin-top:8px; }
   .safety-detail .runtime-issue{ color:var(--muted); font-size:12.5px; }
   .coverage-groups{ display:flex; flex-direction:column; gap:16px; }
   .cov-group{ background:var(--surface); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
@@ -582,6 +581,7 @@ const REPORT_CSS = `
   .step-error{ color:var(--critical); font-size:12.5px; margin-top:2px; }
   .step-note{ color:var(--warning); font-size:12.5px; margin-top:2px; }
   .note{ margin:0 18px 12px; padding:9px 12px; border-radius:5px; font-size:13px; }
+  #view-coverage .note{ margin-left:0; margin-right:0; }
   .note.warning{ background:var(--warning-soft); color:var(--warning); }
   .note.critical{ background:var(--critical-soft); color:var(--critical); }
   .note.muted{ background:var(--surface-2); color:var(--muted); }
