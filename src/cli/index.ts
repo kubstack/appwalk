@@ -3,7 +3,7 @@ import 'dotenv/config';
 import { applyConfig, parseArgs } from './args.js';
 import { createExecutionDirectory } from './execution.js';
 import { generateFromManifest } from './manifest.js';
-import { exploreCoverage, redactorForArgs, writeDiscoveryArtifacts } from './orchestrate.js';
+import { exploreRuns, redactorForArgs, writeDiscoveryArtifacts } from './orchestrate.js';
 import { writeExecutionReport } from './report.js';
 import { logCodegenCompleted, logCodegenPlan } from './codegen-log.js';
 import { appLogger, setAppLogger } from './logger-state.js';
@@ -31,8 +31,8 @@ interface ResolvedRunLog {
 }
 
 function resolvedRuns(args: CliArgs): ResolvedRunLog[] {
-  if (args.coverageRuns?.length) {
-    return args.coverageRuns.map((run) => ({
+  if (args.runs?.length) {
+    return args.runs.map((run) => ({
       name: run.name,
       persona: run.persona ?? args.personaName ?? 'default',
       maxSteps: run.maxSteps ?? args.maxSteps,
@@ -180,7 +180,7 @@ async function main() {
   const executionArgs = { ...args, output: execution.path };
   const executionCommand: 'explore' | 'run' = args.command === 'explore' ? 'explore' : 'run';
 
-  const batch = await withProcessCancellation((signal) => exploreCoverage(executionArgs, execution.id, signal));
+  const batch = await withProcessCancellation((signal) => exploreRuns(executionArgs, execution.id, signal));
   writeDiscoveryArtifacts(batch);
 
   if (executionArgs.command === 'explore') {

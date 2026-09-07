@@ -24,12 +24,16 @@ function escapeHtml(value: string): string {
 }
 
 function cleanDiagnostic(value: string): string {
-  return value
-    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/\ufffd\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
-    .replace(/\r\n?/g, '\n')
-    .trim();
+  return (
+    value
+      // eslint-disable-next-line no-control-regex -- deliberately matches ESC to strip ANSI escape sequences
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+      .replace(/\ufffd\[[0-?]*[ -/]*[@-~]/g, '')
+      // eslint-disable-next-line no-control-regex -- deliberately strips other non-printable control characters
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+      .replace(/\r\n?/g, '\n')
+      .trim()
+  );
 }
 
 /** A Playwright error carries the human-readable reason on its first line, then a "Call log:"
@@ -363,7 +367,10 @@ function renderCoverageEndpoint(endpoint: ReportCoverageEndpoint): string {
 }
 
 function renderCoverageGroup(group: ReportCoverageGroup): string {
-  const errorNote = group.errorVisits > 0 ? ` · <span class="text-critical">${group.errorVisits} error response${group.errorVisits === 1 ? '' : 's'}</span>` : '';
+  const errorNote =
+    group.errorVisits > 0
+      ? ` · <span class="text-critical">${group.errorVisits} error response${group.errorVisits === 1 ? '' : 's'}</span>`
+      : '';
   return `<div class="cov-group">
     <div class="cov-group-head"><h3>${escapeHtml(group.prefix)}</h3>${metaRow([`${group.visits} request${group.visits === 1 ? '' : 's'}${errorNote}`])}</div>
     <div class="cov-table-wrap"><table class="cov-table">

@@ -112,11 +112,7 @@ test('rejects unknown YAML keys at every supported config level', () => {
     ['responses:\n  screenshotss: true', /Unknown config key .*\.responses\.screenshotss\./],
     ['auth:\n  token: secret', /Unknown config key .*\.auth\.token\./],
     ['safety:\n  allowAll: true', /Unknown config key .*\.safety\.allowAll\./],
-    ['coverage:\n  unexpected: true', /Unknown config key .*\.coverage\.unexpected\./],
-    [
-      'coverage:\n  runs:\n    - name: smoke\n      maxstep: 10',
-      /Unknown config key .*\.coverage\.runs\[0\]\.maxstep\./,
-    ],
+    ['runs:\n  - name: smoke\n    maxstep: 10', /Unknown config key .*\.runs\[0\]\.maxstep\./],
   ] as const;
 
   for (const [unknownConfig, expected] of cases) {
@@ -154,18 +150,17 @@ test('accepts a per-run auth override and rejects a partial one', () => {
         'url: https://example.test',
         'provider: openai',
         'model: test-model',
-        'coverage:',
-        '  runs:',
-        '    - name: Persona A',
-        '      email: persona-a@example.test',
-        '      password: persona-a-secret',
-        '    - name: Persona B',
-        '      storageState: ./persona-b-state.json',
+        'runs:',
+        '  - name: Persona A',
+        '    email: persona-a@example.test',
+        '    password: persona-a-secret',
+        '  - name: Persona B',
+        '    storageState: ./persona-b-state.json',
       ].join('\n'),
     );
     const config = loadAppwalkConfig(validPath);
-    assert.equal(config.coverage?.runs?.[0]?.email, 'persona-a@example.test');
-    assert.equal(config.coverage?.runs?.[1]?.storageState, './persona-b-state.json');
+    assert.equal(config.runs?.[0]?.email, 'persona-a@example.test');
+    assert.equal(config.runs?.[1]?.storageState, './persona-b-state.json');
 
     writeFileSync(
       partialPath,
@@ -173,10 +168,9 @@ test('accepts a per-run auth override and rejects a partial one', () => {
         'version: 1',
         'provider: openai',
         'model: test-model',
-        'coverage:',
-        '  runs:',
-        '    - name: Persona A',
-        '      email: persona-a@example.test',
+        'runs:',
+        '  - name: Persona A',
+        '    email: persona-a@example.test',
       ].join('\n'),
     );
     assert.throws(() => loadAppwalkConfig(partialPath), /email and password must be provided together/);

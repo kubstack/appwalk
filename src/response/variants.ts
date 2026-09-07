@@ -247,7 +247,7 @@ export function responseFixtureMatchesSelector(fixture: ResponseFixture, selecto
 
 function extractJson(text: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(text)?.[1];
-  const candidate = fenced ?? text.match(/[\[{][\s\S]*[\]}]/)?.[0];
+  const candidate = fenced ?? text.match(/[[{][\s\S]*[\]}]/)?.[0];
   if (!candidate) return undefined;
   try {
     return JSON.parse(candidate);
@@ -427,6 +427,8 @@ export function responseVariantPrompt(
         .map((step, index) => `${index + 1}. URL: ${step.url}\n${step.snapshot.slice(0, 1200)}`)
         .join('\n\n')
     : '(No replay timeline was available.)';
+  /* eslint-disable no-useless-escape -- the escaped quotes below are literal example JSON content for the
+     model to read, not JS string syntax; removing them would show an invalid JSON example. */
   return `You are designing a small set of deterministic UI scenarios from one verified browser flow.
 
 Flow: ${flowName}
@@ -456,6 +458,7 @@ Rules:
 - Do not repeat the original response or produce cosmetic duplicates.
 - Include one concrete expectation that should be observable after the selected source response is applied during the same flow, using only visible/hidden/containsText/urlContains/urlEquals. Do not guess a signal unrelated to the response.
 - If no meaningful variant is possible, return {"variants":[],"reason":"briefly explain why no reliable observable scenario can be derived"}.`;
+  /* eslint-enable no-useless-escape */
 }
 
 export async function installResponseFixtures(

@@ -7,7 +7,7 @@ Provider and model are mandatory. Pass them directly or define both in a config 
 ```bash
 PROVIDER="your-provider"
 MODEL="your-model"
-npx tsx src/cli/index.ts run https://your-app.example \
+npx appwalk run https://your-app.example \
   --provider "$PROVIDER" --model "$MODEL"
 ```
 
@@ -47,7 +47,7 @@ or a narrowly scoped safety JSON allow rule. Remember that an allow rule can ove
 
 ## Rate limiting
 
-Rate limits are provider and organization limits, not per browser session. Multiple persona runs do not receive isolated provider quotas. Coverage runs execute sequentially, but each provider request still includes the context required by that persona.
+Rate limits are provider and organization limits, not per browser session. Multiple persona runs do not receive isolated provider quotas. Runs execute sequentially by default; raising `--max-concurrent-personas`/`maxConcurrentPersonas` does not raise the real provider limit either, since a shared in-process rate-limit ledger blocks a concurrent request that would exceed it. See [Multi-person coverage](configuration.md#multi-person-coverage).
 
 Use a smaller action budget, avoid screenshots unless the selected model benefits from vision, keep response-variant exploration disabled until the base run is useful, and enable `--debug` to inspect provider request and rate-limit metadata. A repeated request cannot make a token window larger; Appwalk surfaces provider rate-limit failures rather than blindly retrying the same oversized request.
 
@@ -60,14 +60,14 @@ Screenshots are sent only where the provider integration supports them, and a te
 Generation needs an explicit authentication setup. Appwalk does not reuse auth tokens from discovery artifacts, so pass the original credentials or a storage state:
 
 ```bash
-npx tsx src/cli/index.ts generate ./appwalk-output/<execution-id> \
+npx appwalk generate ./appwalk-output/<execution-id> \
   --email "$APP_USERNAME" --password "$APP_PASSWORD"
 ```
 
 For SSO or MFA:
 
 ```bash
-npx tsx src/cli/index.ts generate ./appwalk-output/<execution-id> \
+npx appwalk generate ./appwalk-output/<execution-id> \
   --storage-state ./auth/storage-state.json
 ```
 

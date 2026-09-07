@@ -75,7 +75,9 @@ export class UploadInputPolicy {
         assertNoSymlink(candidate, this.baseDir);
       } catch (error) {
         if (error instanceof Error && error.message.startsWith('uploadFile:')) throw error;
-        throw new Error(`uploadFile: agent input path does not exist: ${relative(this.baseDir, candidate)}`);
+        throw new Error(`uploadFile: agent input path does not exist: ${relative(this.baseDir, candidate)}`, {
+          cause: error,
+        });
       }
 
       let realCandidate: string;

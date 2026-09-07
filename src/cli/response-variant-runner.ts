@@ -140,6 +140,10 @@ export async function runResponseVariants(input: ResponseVariantRunnerInput): Pr
       const variantStorageState =
         flowIndex > 0 && flow.startStorageState ? JSON.parse(flow.startStorageState) : args.storageStatePath;
       const variantTabRegistryHandle: TabRegistryHandle = { tabs: new Map() };
+      // `preparePage` below reads this via closure and can run (guarded by runtimeServicesReady)
+      // before the sole assignment further down; making it `const` there would throw a
+      // temporal-dead-zone ReferenceError on that earlier call.
+      // eslint-disable-next-line prefer-const
       let variantRecorder: EvidenceRecorder | undefined;
       let runtimeServicesReady = false;
       let variantSourceMatched = false;

@@ -5,7 +5,7 @@ import { isValidWebUrl } from './url.js';
 export type ProviderName = 'anthropic' | 'gemini' | 'ollama' | 'grok' | 'openai';
 export type BrowserEngine = 'chromium' | 'firefox' | 'webkit';
 
-export interface CoverageRunConfig {
+export interface RunConfig {
   name: string;
   persona?: string;
   maxSteps?: number;
@@ -28,7 +28,7 @@ export interface AppwalkConfig {
   browser?: BrowserEngine;
   persona?: string;
   maxSteps?: number;
-  /** How many coverage-run personas may explore concurrently. Defaults to 1 (sequential, the
+  /** How many persona runs may explore concurrently. Defaults to 1 (sequential, the
    * historical behavior) — concurrency changes local resource usage (one Chromium process per
    * persona) and terminal output shape, so it's opt-in. */
   maxConcurrentPersonas?: number;
@@ -50,9 +50,7 @@ export interface AppwalkConfig {
   };
   scope?: string;
   expect?: string[];
-  coverage?: {
-    runs?: CoverageRunConfig[];
-  };
+  runs?: RunConfig[];
 }
 
 function expandEnv(value: string): string {
@@ -194,7 +192,7 @@ function validateConfig(value: unknown, path: string): AppwalkConfig {
       'safety',
       'scope',
       'expect',
-      'coverage',
+      'runs',
     ],
     path,
   );
@@ -252,39 +250,33 @@ function validateConfig(value: unknown, path: string): AppwalkConfig {
       throw new Error(`safety.config must be a non-empty string in ${path}.`);
     }
   }
-  if (config.coverage !== undefined) {
-    const coverage = validateObject(config.coverage, 'coverage', path);
-    validateKnownKeys(coverage, ['runs'], `${path}.coverage`);
-    const runs = coverage.runs;
-    if (
-      runs !== undefined &&
-      (!Array.isArray(runs) || runs.some((run) => !run || typeof run !== 'object' || Array.isArray(run)))
-    ) {
-      throw new Error(`coverage.runs must be a list of run objects in ${path}.`);
+  if (config.runs !== undefined) {
+    const runs = config.runs;
+    if (!Array.isArray(runs) || runs.some((run) => !run || typeof run !== 'object' || Array.isArray(run))) {
+      throw new Error(`runs must be a list of run objects in ${path}.`);
     }
-    for (const [index, run] of ((runs as unknown[] | undefined) ?? []).entries()) {
+    for (const [index, run] of (runs as unknown[]).entries()) {
       const runConfig = run as Record<string, unknown>;
       validateKnownKeys(
         runConfig,
         ['name', 'persona', 'maxSteps', 'scope', 'expect', 'email', 'password', 'storageState'],
-        `${path}.coverage.runs[${index}]`,
+        `${path}.runs[${index}]`,
       );
-      if (!isNonEmptyString(runConfig.name)) throw new Error(`coverage.runs[${index}].name is required in ${path}.`);
+      if (!isNonEmptyString(runConfig.name)) throw new Error(`runs[${index}].name is required in ${path}.`);
       if (runConfig.persona !== undefined && !isNonEmptyString(runConfig.persona)) {
-        throw new Error(`coverage.runs[${index}].persona must be a non-empty string in ${path}.`);
+        throw new Error(`runs[${index}].persona must be a non-empty string in ${path}.`);
       }
-      if (runConfig.maxSteps !== undefined)
-        validateMaxSteps(runConfig.maxSteps, `coverage.runs[${index}].maxSteps`, path);
+      if (runConfig.maxSteps !== undefined) validateMaxSteps(runConfig.maxSteps, `runs[${index}].maxSteps`, path);
       if (runConfig.scope !== undefined && !isNonEmptyString(runConfig.scope)) {
-        throw new Error(`coverage.runs[${index}].scope must be a non-empty string in ${path}.`);
+        throw new Error(`runs[${index}].scope must be a non-empty string in ${path}.`);
       }
-      if (runConfig.expect !== undefined) validateStringList(runConfig.expect, `coverage.runs[${index}].expect`, path);
+      if (runConfig.expect !== undefined) validateStringList(runConfig.expect, `runs[${index}].expect`, path);
       for (const key of ['email', 'password', 'storageState'] as const) {
         if (runConfig[key] !== undefined && !isNonEmptyString(runConfig[key])) {
-          throw new Error(`coverage.runs[${index}].${key} must be a non-empty string in ${path}.`);
+          throw new Error(`runs[${index}].${key} must be a non-empty string in ${path}.`);
         }
       }
-      validateCredentialPair(runConfig.email, runConfig.password, `${path} coverage.runs[${index}]`);
+      validateCredentialPair(runConfig.email, runConfig.password, `${path} runs[${index}]`);
     }
   }
   if (config.expect !== undefined) validateStringList(config.expect, 'expect', path);

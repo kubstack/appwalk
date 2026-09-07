@@ -53,6 +53,7 @@ function toLocatorExpressionFromRoot(locator: string, root: string): string {
     } catch (error) {
       throw new Error(
         `Invalid text locator regular expression: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
     return `${root}.getByText(new RegExp(${serializeJsValue(pattern)}, ${serializeJsValue(flags)}))`;

@@ -4,7 +4,7 @@ Appwalk is a deliberately small pipeline. Each stage has a distinct responsibili
 
 ```mermaid
 flowchart TD
-    A[CLI parsing and config merge] --> B[Coverage runs]
+    A[CLI parsing and config merge] --> B[Persona runs]
     B --> C[Browser setup and safety guard]
     C --> D[Agent loop]
     D --> E[EvidenceRecorder and evidence.jsonl]
@@ -18,23 +18,28 @@ flowchart TD
 
 ## Main boundaries
 
-| Area | Responsibility |
-| --- | --- |
-| `src/cli/index.ts` | Parse commands, merge explicit config, create execution directories, orchestrate runs, and write artifacts. |
-| `src/config.ts` | Validate YAML and the flattened CLI/config result. |
-| `src/agent/loop.ts` | Maintain one provider conversation and one browser exploration session per coverage run. |
-| `src/agent/personas.ts` | Define built-in persona goals, intent, verification mode, and core actions. |
-| `src/browser/*` | Execute browser actions, login, page observations, timeout setup, and browser lifecycle operations. |
-| `src/evidence/*` | Record per-step browser evidence and read append-only JSONL safely. |
-| `src/verify/replay.ts` | Re-execute successful actions without an LLM and compare the expected result, including whether a derived fixture source was actually observed. |
-| `src/response/variants.ts` | Capture eligible JSON fixtures, parse conservative patches, install fixture queues, and report which selected fixture was applied during derived replay. |
-| `src/report/contract.ts` | Build the structured report contract and render the human-facing HTML report. |
-| `src/codegen/spec.ts` | Convert confirmed flows into Playwright test source. |
-| `src/providers/*` | Adapt provider-specific tool calling, history, response parsing, and rate-limit metadata to one `LlmProvider` interface. |
+| Area                                               | Responsibility                                                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/cli/index.ts`                                 | Parse commands, merge explicit config, create execution directories, orchestrate runs, and write artifacts.                                                         |
+| `src/config.ts`                                    | Validate YAML and the flattened CLI/config result.                                                                                                                  |
+| `src/agent/loop.ts`                                | Maintain one provider conversation and one browser exploration session per run.                                                                                     |
+| `src/agent/personas.ts`                            | Define built-in persona goals, intent, verification mode, and core actions.                                                                                         |
+| `src/agent/tools.ts`, `validation.ts`              | Validate a requested tool call against its schema, dispatch it to the browser, and clean up transient handlers (dialogs, network simulation) afterward.             |
+| `src/agent/verification.ts`, `success.ts`          | Classify a flow's evidence against its persona's verification mode (completion, rejection, preservation, stability, recovery) after exploration ends.               |
+| `src/browser/*`                                    | Execute browser actions, login, page observations, timeout setup, and browser lifecycle operations.                                                                 |
+| `src/evidence/*`                                   | Record per-step browser evidence and read append-only JSONL safely.                                                                                                 |
+| `src/safety/*`                                     | Define and apply the default destructive-method block (`guard.ts`, `methods.ts`) that protects the target during exploration and replay.                            |
+| `src/security/*`                                   | Redact secrets/PII from evidence, logs, and provider input (`redaction.ts`); validate `uploadFile` paths against the allowed inputs directory (`upload-inputs.ts`). |
+| `src/verify/replay.ts`                             | Re-execute successful actions without an LLM and compare the expected result, including whether a derived fixture source was actually observed.                     |
+| `src/response/variants.ts`                         | Capture eligible JSON fixtures, parse conservative patches, install fixture queues, and report which selected fixture was applied during derived replay.            |
+| `src/report/contract.ts`, `coverage.ts`            | Build the structured report contract (`ExecutionReport`), including the endpoint-coverage breakdown derived from captured network evidence.                         |
+| `src/report/html-report.ts`, `terminal-summary.ts` | Render the human-facing HTML report and the CLI's final console summary from that same contract.                                                                    |
+| `src/codegen/spec.ts`                              | Convert confirmed flows into Playwright test source.                                                                                                                |
+| `src/providers/*`                                  | Adapt provider-specific tool calling, history, response parsing, and rate-limit metadata to one `LlmProvider` interface.                                            |
 
 ## Context isolation
 
-One `coverage` run owns one browser session and one provider conversation. Coverage runs are executed sequentially and are not merged into one LLM context. The aggregate report combines their results only after each run has completed.
+One run owns one browser session and one provider conversation. Runs are executed sequentially by default (concurrently when `maxConcurrentPersonas` is raised) and are not merged into one LLM context. The aggregate report combines their results only after each run has completed.
 
 Replay does not ask the LLM what to do next. It reads the successful tool calls from evidence and executes that fixed sequence in a clean session. This is the key boundary between exploration and verification.
 

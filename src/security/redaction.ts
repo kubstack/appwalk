@@ -30,6 +30,7 @@ const KEY_VALUE_SECRET_REPLACE =
   /\b(password|passwd|api[_-]?key|authorization|token|secret|client[_-]?secret)\s*[:=]\s*([^,\s}]+)/gi;
 const ABSOLUTE_URL = /https?:\/\/[^\s"'<>]+/gi;
 const RELATIVE_URL_WITH_QUERY = /(^|[\s(])((?:\/|\?)[^\s"'<>]*\?[^\s"'<>]+)/g;
+// eslint-disable-next-line no-control-regex -- deliberately matches the ESC control char to strip ANSI escape sequences
 const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const ENCODED_ANSI_ESCAPE = /%1b\[[0-?]*[ -/]*[@-~]/gi;
 const SENSITIVE_LOCATOR =

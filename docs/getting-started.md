@@ -5,28 +5,30 @@ This guide takes a new user from a checkout of Appwalk to a generated Playwright
 ## 1. Install
 
 ```bash
-git clone <repository-url>
-cd appwalk
-npm install
 npx playwright install chromium
 ```
 
 The command above installs Chromium, the default engine. `--browser firefox` or `--browser webkit` (see [Commands and options](commands.md)) needs its own `npx playwright install firefox`/`webkit` first.
 
-Appwalk currently runs from the repository with `tsx`:
+Appwalk itself needs no separate install step; `npx appwalk` fetches and runs it on demand:
 
 ```bash
-npx tsx src/cli/index.ts <command> ...
+npx appwalk <command> ...
 ```
 
 ## 2. Choose a provider
 
 Set only the credential required by the provider you use. Hosted providers use different variable names; Ollama does not need a key:
 
-```bash
-# Set the key matching PROVIDER when using a hosted provider:
-# OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or XAI_API_KEY
-```
+| Provider    | Environment variable | Local endpoint           |
+| ----------- | -------------------- | ------------------------ |
+| `openai`    | `OPENAI_API_KEY`     | Hosted API               |
+| `anthropic` | `ANTHROPIC_API_KEY`  | Hosted API               |
+| `gemini`    | `GEMINI_API_KEY`     | Hosted API               |
+| `grok`      | `XAI_API_KEY`        | Hosted API               |
+| `ollama`    | None                 | `http://localhost:11434` |
+
+The selected hosted provider key must be present before the browser run starts. Ollama does not require a key, but the local service and selected model must be available.
 
 Then provide both provider and model on the command line or in an explicitly passed config file. There is no implicit provider or model selection.
 
@@ -35,7 +37,7 @@ Then provide both provider and model on the command line or in an explicitly pas
 ```bash
 PROVIDER="your-provider"  # openai, anthropic, gemini, grok, or ollama
 MODEL="your-model"
-npx tsx src/cli/index.ts run https://your-app.example \
+npx appwalk run https://your-app.example \
   --provider "$PROVIDER" \
   --model "$MODEL" \
   --persona mia \
@@ -48,13 +50,13 @@ If the application is public, omit `--email` and `--password`. If it has authent
 
 ```bash
 # Credential login, when the application has a normal username/password flow.
-npx tsx src/cli/index.ts run https://your-app.example \
+npx appwalk run https://your-app.example \
   --email "$APP_USERNAME" \
   --password "$APP_PASSWORD" \
   --provider "$PROVIDER" --model "$MODEL" --persona mia
 
 # Reuse a browser storage state captured separately.
-npx tsx src/cli/index.ts run https://your-app.example \
+npx appwalk run https://your-app.example \
   --storage-state ./auth/storage-state.json \
   --provider "$PROVIDER" --model "$MODEL" --persona mia
 ```
@@ -87,7 +89,7 @@ The generated suite may include a sibling `auth.ts` helper and a local `.secrets
 When you know the area you want to inspect, add a scope:
 
 ```bash
-npx tsx src/cli/index.ts run https://your-app.example \
+npx appwalk run https://your-app.example \
   --provider "$PROVIDER" --model "$MODEL" \
   --persona mia --max-steps 25 \
   --scope "Explore account settings and changing the notification preference" \
@@ -98,10 +100,10 @@ An expectation describes a user-visible condition inside the scope. `--expect` r
 
 ## First-run checklist
 
-| Check | Why it matters |
-| --- | --- |
-| Use a disposable or staging target | Exploration can navigate widely, and `--allow-destructive` can permit mutations. |
-| Set the provider and model explicitly | They are required configuration, not hidden defaults. |
-| Start with 15-25 steps | This keeps the first run understandable and controls provider usage. |
-| Leave destructive actions blocked initially | The default policy prevents common state changes. |
-| Read `report.html` before generated code | A generated test is an output of confirmed evidence, not a guarantee that every discovered flow was stable. |
+| Check                                       | Why it matters                                                                                              |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Use a disposable or staging target          | Exploration can navigate widely, and `--allow-destructive` can permit mutations.                            |
+| Set the provider and model explicitly       | They are required configuration, not hidden defaults.                                                       |
+| Start with 15-25 steps                      | This keeps the first run understandable and controls provider usage.                                        |
+| Leave destructive actions blocked initially | The default policy prevents common state changes.                                                           |
+| Read `report.html` before generated code    | A generated test is an output of confirmed evidence, not a guarantee that every discovered flow was stable. |

@@ -20,7 +20,7 @@ function storageStateFileContent(path: string): string {
     return JSON.stringify(JSON.parse(readFileSync(path, 'utf8')), null, 2) + '\n';
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Unable to read storage state ${path}: ${detail}`);
+    throw new Error(`Unable to read storage state ${path}: ${detail}`, { cause: error });
   }
 }
 

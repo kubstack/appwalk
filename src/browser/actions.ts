@@ -570,7 +570,6 @@ export async function simulateFailure(page: Page, urlPattern: string, mode: Fail
   // Unroute happens *after* the route settles, not before — unrouting mid-flight (before fulfill/abort
   // resolves) makes Playwright treat the route as already handled and throw on the fulfill/abort call
   // that was actually meant to settle it.
-  let arm: TransientRouteArm;
   const handler = async (route: Route) => {
     if (arm.consumed) {
       await route.continue();
@@ -607,7 +606,7 @@ export async function simulateFailure(page: Page, urlPattern: string, mode: Fail
       await unrouteArm(page, arm);
     }
   };
-  arm = { urlPattern, handler, consumed: false, settled: false };
+  const arm: TransientRouteArm = { urlPattern, handler, consumed: false, settled: false };
   await registerRouteArm(page, arm);
 }
 
@@ -617,7 +616,6 @@ export async function simulateLatency(page: Page, urlPattern: string, delayMs: n
   if (!Number.isFinite(delayMs) || delayMs < 0 || delayMs > 60_000) {
     throw new Error('simulateLatency: delayMs must be a finite number between 0 and 60000.');
   }
-  let arm: TransientRouteArm;
   const handler = async (route: Route) => {
     if (arm.consumed) {
       await route.continue();
@@ -632,7 +630,7 @@ export async function simulateLatency(page: Page, urlPattern: string, delayMs: n
       await unrouteArm(page, arm);
     }
   };
-  arm = { urlPattern, handler, consumed: false, settled: false };
+  const arm: TransientRouteArm = { urlPattern, handler, consumed: false, settled: false };
   await registerRouteArm(page, arm);
 }
 

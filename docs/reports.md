@@ -23,17 +23,17 @@ The execution ID combines an ISO timestamp and a short random suffix. This keeps
 
 ## Which file to open
 
-| File | Audience | Purpose |
-| --- | --- | --- |
-| `report.html` | Tester, developer, reviewer | Human-facing execution result: personas, flows, replay state, findings, response scenarios, warnings, and recorded steps. |
-| `report.json` | CI, dashboards, integrations | Stable structured execution contract with summary, runs, flow results, findings, and artifact paths. |
-| `discovery.json` | `generate`, tooling | Manifest of discovered flows, run metadata, replay state, and response fixtures. It does not contain captured auth state. |
-| `evidence.jsonl` | Debugging and forensic review | Append-only per-step browser evidence, tool calls, results, network entries, console entries, and errors. |
-| `discovered.spec.ts` | Playwright users | Generated tests for confirmed base and derived flows. |
-| `auth.ts` | Playwright users | Shared credential login helper used by generated tests when email/password login is configured. |
-| `.storage-state.json` | Local generated suite | Copy of the pre-authenticated state supplied with `--storage-state`; sensitive, ignored by Git, and should never be committed. |
-| `.secrets.json` | Local generated suite | Credentials used by `auth.ts`; ignored by Git and should never be committed. |
-| `fixtures.ts` and `fixtures/` | Playwright users | Shared response replay helper, captured baseline JSON, and response-variant patch descriptors. |
+| File                          | Audience                      | Purpose                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `report.html`                 | Tester, developer, reviewer   | Human-facing execution result: a **Coverage** view of endpoints actually touched, and a **Personas** view with flows, replay state, findings, response scenarios, warnings, and recorded steps. |
+| `report.json`                 | CI, dashboards, integrations  | Stable structured execution contract with summary (including a `needsReview` count), runs, flow results, findings, a `coverage` breakdown, and artifact paths.                                  |
+| `discovery.json`              | `generate`, tooling           | Manifest of discovered flows, run metadata, replay state, and response fixtures. It does not contain captured auth state.                                                                       |
+| `evidence.jsonl`              | Debugging and forensic review | Append-only per-step browser evidence, tool calls, results, network entries, console entries, and errors.                                                                                       |
+| `discovered.spec.ts`          | Playwright users              | Generated tests for confirmed base and derived flows.                                                                                                                                           |
+| `auth.ts`                     | Playwright users              | Shared credential login helper used by generated tests when email/password login is configured.                                                                                                 |
+| `.storage-state.json`         | Local generated suite         | Copy of the pre-authenticated state supplied with `--storage-state`; sensitive, ignored by Git, and should never be committed.                                                                  |
+| `.secrets.json`               | Local generated suite         | Credentials used by `auth.ts`; ignored by Git and should never be committed.                                                                                                                    |
+| `fixtures.ts` and `fixtures/` | Playwright users              | Shared response replay helper, captured baseline JSON, and response-variant patch descriptors.                                                                                                  |
 
 ## Data handling
 
@@ -50,12 +50,12 @@ according to the environment's retention policy.
 
 ## Exit codes
 
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Confirmed flow coverage exists without findings or incomplete evidence. |
-| `1` | At least one flow contains a confirmed potential bug. |
-| `2` | An execution-level error prevented the run from completing, including invalid CLI/configuration or provider setup. A report may not exist when the failure happens before execution initialization. |
-| `3` | Coverage or evidence is incomplete, or no confirmed regression flow survived. |
+| Exit code | Meaning                                                                                                                                                                                             |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`       | Confirmed flow coverage exists without findings or incomplete evidence.                                                                                                                             |
+| `1`       | At least one flow contains a confirmed potential bug.                                                                                                                                               |
+| `2`       | An execution-level error prevented the run from completing, including invalid CLI/configuration or provider setup. A report may not exist when the failure happens before execution initialization. |
+| `3`       | Coverage or evidence is incomplete, or no confirmed regression flow survived.                                                                                                                       |
 
 Exit code is a process/CI signal only. The report does not assign a status to the execution or to a persona. Review status on individual flows, alongside the summary counts and coverage warnings. A generated test suite can exist while the exit code is `1` or `3`; generation and application health are separate signals.
 
@@ -63,11 +63,11 @@ Exit code is a process/CI signal only. The report does not assign a status to th
 
 The report uses three simple flow results. Discovery and replay remain supporting facts because they answer different questions. Runtime issues are observations, not a flow result; they are shown separately and do not change the flow result by themselves:
 
-| Result | Meaning |
-| --- | --- |
-| Confirmed | Replay confirmed the flow. Runtime issues, when present, are shown separately on the flow. |
-| Potential bug | Replay confirmed the flow and reproduced a finding that indicates a potential application bug. |
-| Needs review | Replay did not confirm the flow, a finding was inconclusive, or the evidence was insufficient. The flow page includes the failed step, error, last URL, and last captured page state when an action failed. It is not proof of a bug. |
+| Result        | Meaning                                                                                                                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirmed     | Replay confirmed the flow. Runtime issues, when present, are shown separately on the flow.                                                                                                                                            |
+| Potential bug | Replay confirmed the flow and reproduced a finding that indicates a potential application bug.                                                                                                                                        |
+| Needs review  | Replay did not confirm the flow, a finding was inconclusive, or the evidence was insufficient. The flow page includes the failed step, error, last URL, and last captured page state when an action failed. It is not proof of a bug. |
 
 Supporting facts shown on a flow are:
 
@@ -77,14 +77,15 @@ Supporting facts shown on a flow are:
 
 ## Report interpretation
 
-Read the report in this order:
+`report.html` opens on the **Coverage** tab by default; switch to **Personas** for the per-flow detail. Read it in this order:
 
-1. **Summary**: see counts for personas, flows, replay confirmation, generated tests, findings, and coverage warnings.
-2. **Persona coverage**: see which independent exploration runs completed, which exhausted their action budget, and whether safety limited the result.
-3. **Flows**: review the status of each discovered or derived flow. Unconfirmed discoveries are useful leads, not regression coverage.
-4. **Findings**: inspect confirmed and inconclusive challenge results separately.
-5. **Response scenarios**: distinguish baseline fixtures used to stabilize the original flow from planner proposals and confirmed derived scenarios. Variants are shown beneath their baseline flow in the report navigation and flow order. A variant is confirmed only when its selected source response was actually applied during replay and its derived expectation was observed afterwards. Accepted, rejected, and skipped proposals are reported separately, so a planner that returned invalid patches is not presented as if it returned no scenarios.
-6. **Runtime issues, recorded steps, and evidence**: review potential browser/application errors, then use the exact action sequence and redacted evidence when debugging. Errors caused directly by a safety-blocked request are labeled as safety-related and are excluded from potential-bug review; navigation cancellations such as `ERR_ABORTED` are lifecycle noise and are excluded as well. The safety limitation itself still makes coverage inconclusive.
+1. **Summary strip**: personas run, flows discovered, replay-confirmed, generated tests, confirmed findings, and **needs review**, meaning flows that neither replay-confirmed nor produced a confirmed finding (they simply never verified, replay couldn't reproduce them, or evidence was insufficient).
+2. **Coverage** (default tab): every distinct `method + path` actually touched during exploration, grouped by URL path prefix, with visit counts, which personas hit it, and highlighted error statuses. This is derived entirely from captured network evidence; no separate crawling happens to build it. Same-origin infrastructure paths a hosting/CDN provider injects (e.g. Cloudflare's `/cdn-cgi/*`) are excluded, so real application coverage can look thinner here than the total request count elsewhere would suggest. The blocked-mutation-methods note also appears here, since it directly explains why mutation-heavy paths (checkout, forms, deletes) are under-represented by default.
+3. **Personas tab → persona coverage**: see which independent exploration runs completed, which exhausted their action budget, and whether safety limited the result.
+4. **Flows**: review the status of each discovered or derived flow. Unconfirmed discoveries are useful leads, not regression coverage.
+5. **Findings**: inspect confirmed and inconclusive challenge results separately.
+6. **Response scenarios**: distinguish baseline fixtures used to stabilize the original flow from planner proposals and confirmed derived scenarios. Variants are shown beneath their baseline flow in the report navigation and flow order. A variant is confirmed only when its selected source response was actually applied during replay and its derived expectation was observed afterwards. Accepted, rejected, and skipped proposals are reported separately, so a planner that returned invalid patches is not presented as if it returned no scenarios.
+7. **Runtime issues, recorded steps, and evidence**: review potential browser/application errors, then use the exact action sequence and redacted evidence when debugging. Errors caused directly by a safety-blocked request are labeled as safety-related and are excluded from potential-bug review; navigation cancellations such as `ERR_ABORTED` are lifecycle noise and are excluded as well. The safety limitation itself still makes coverage inconclusive.
 
 ## Evidence warnings
 

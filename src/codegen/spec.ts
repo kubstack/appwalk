@@ -768,7 +768,7 @@ function validateCodegenToolInput(name: string, input: Record<string, unknown>):
     return validateToolInput(definition, input);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Cannot generate ${name}: ${detail}`);
+    throw new Error(`Cannot generate ${name}: ${detail}`, { cause: error });
   }
 }
 

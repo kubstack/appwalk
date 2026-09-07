@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCoverageRuns, redactorForArgs, summarizeSafety } from '../../src/cli/orchestrate.js';
+import { createPersonaRuns, redactorForArgs, summarizeSafety } from '../../src/cli/orchestrate.js';
 import type { CliArgs } from '../../src/cli/args.js';
 
 function baseArgs(overrides: Partial<CliArgs> = {}): CliArgs {
@@ -24,30 +24,30 @@ function baseArgs(overrides: Partial<CliArgs> = {}): CliArgs {
   };
 }
 
-test('a coverage run without its own auth fields inherits the global credentials', () => {
+test('a run without its own auth fields inherits the global credentials', () => {
   const args = baseArgs({
     email: 'global@example.test',
     password: 'global-secret',
-    coverageRuns: [{ name: 'Persona A' }],
+    runs: [{ name: 'Persona A' }],
   });
-  const [runA] = createCoverageRuns(args);
+  const [runA] = createPersonaRuns(args);
   assert.equal(runA!.args.email, 'global@example.test');
   assert.equal(runA!.args.password, 'global-secret');
   assert.equal(runA!.args.storageStatePath, undefined);
 });
 
-test("a coverage run's own credentials fully replace the global auth, not merge with it", () => {
+test("a run's own credentials fully replace the global auth, not merge with it", () => {
   const args = baseArgs({
     email: 'global@example.test',
     password: 'global-secret',
     storageStatePath: './global-state.json',
-    coverageRuns: [
+    runs: [
       { name: 'Persona A', email: 'persona-a@example.test', password: 'persona-a-secret' },
       { name: 'Persona B', storageState: './persona-b-state.json' },
       { name: 'Persona C' },
     ],
   });
-  const [runA, runB, runC] = createCoverageRuns(args);
+  const [runA, runB, runC] = createPersonaRuns(args);
 
   // A declares its own credentials — the global storageState must not leak in and silently win
   // over them (navigateOrLogin prefers storageState when both are present).
@@ -66,11 +66,11 @@ test("a coverage run's own credentials fully replace the global auth, not merge 
   assert.equal(runC!.args.storageStatePath, './global-state.json');
 });
 
-test("redactorForArgs redacts a coverage run's own secrets, not just the global ones", () => {
+test("redactorForArgs redacts a run's own secrets, not just the global ones", () => {
   const args = baseArgs({
     email: 'global@example.test',
     password: 'global-secret',
-    coverageRuns: [{ name: 'Persona A', email: 'persona-a@example.test', password: 'persona-a-only-secret' }],
+    runs: [{ name: 'Persona A', email: 'persona-a@example.test', password: 'persona-a-only-secret' }],
   });
   const redactor = redactorForArgs(args);
   const redacted = redactor.text('login attempt with persona-a-only-secret for persona-a@example.test');

@@ -156,7 +156,10 @@ test('runtime issues on a flow do not change its replay-confirmed status', () =>
   );
   // The request line (method + status + url) already carries the status — the message field's
   // fixed "HTTP <status> response" template must not be repeated on top of it.
-  assert.match(html, /<strong>HTTP error<\/strong> <span class="mono">GET 503 https:\/\/example\.test\/api\/cart<\/span>/);
+  assert.match(
+    html,
+    /<strong>HTTP error<\/strong> <span class="mono">GET 503 https:\/\/example\.test\/api\/cart<\/span>/,
+  );
   assert.doesNotMatch(html, /HTTP 503 response/);
 });
 

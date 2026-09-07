@@ -84,7 +84,9 @@ export function loadManifest(path: string): DiscoveryManifest {
   try {
     parsed = JSON.parse(readFileSync(path, 'utf-8'));
   } catch (error) {
-    throw new Error(`Invalid discovery manifest ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Invalid discovery manifest ${path}: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    });
   }
   const issues = validateDiscoveryManifest(parsed);
   if (issues.length > 0) throw new Error(`Invalid discovery manifest ${path}: ${formatArtifactIssues(issues)}`);

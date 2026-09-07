@@ -56,6 +56,7 @@ export interface LogEvent {
   details?: Record<string, unknown>;
 }
 
+// eslint-disable-next-line no-control-regex -- deliberately matches the ESC control char to strip ANSI escape sequences
 const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const ENCODED_ANSI_ESCAPE = /%1b\[[0-?]*[ -/]*[@-~]/gi;
 const RESET = '\u001b[0m';

@@ -604,7 +604,7 @@ export async function executeToolCall(
     const notes = await cleanupTransientHandlers();
     if (notes.length > 0) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${message} ${notes.join(' ')}`);
+      throw new Error(`${message} ${notes.join(' ')}`, { cause: error });
     }
     throw error;
   }
@@ -623,7 +623,7 @@ export async function executeToolCall(
     const notes = await cleanupTransientHandlers();
     if (notes.length > 0) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${message} ${notes.join(' ')}`);
+      throw new Error(`${message} ${notes.join(' ')}`, { cause: error });
     }
     throw error;
   }

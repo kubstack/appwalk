@@ -1,19 +1,49 @@
 {
   "name": "appwalk",
   "version": "0.1.0",
-  "private": true,
+  "description": "AI-powered CLI that turns browser exploration into verified Playwright regression tests.",
+  "keywords": [
+    "playwright",
+    "e2e-testing",
+    "test-generation",
+    "ai-agent",
+    "browser-automation",
+    "regression-testing",
+    "cli"
+  ],
+  "homepage": "https://github.com/kubstack/appwalk#readme",
+  "bugs": {
+    "url": "https://github.com/kubstack/appwalk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kubstack/appwalk.git"
+  },
+  "license": "MIT",
+  "author": "Jakub Mareš (https://github.com/kubzej)",
   "type": "module",
+  "bin": {
+    "appwalk": "dist/index.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "cli": "tsx src/cli/index.ts",
+    "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e": "tsx --test tests/e2e/*.test.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -24,10 +54,15 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
+    "tsdown": "^0.23.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.69.0"
   }
 }

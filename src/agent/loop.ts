@@ -116,7 +116,7 @@ Locator syntax — this is a Playwright locator string, not a plain CSS selector
 - To target by visible text, use text="exact text" or text=/partial/i.
 - If a form field's role/name doesn't cleanly match it (no accessible name, or an ambiguous one), target it by its associated <label> text instead: label="Email" or label=/e-?mail/i. The same pattern works for placeholder="Search text", alt="Image description", and title="Tooltip text" when those are the only identifying attribute.
 - To target an element inside an iframe, prefix its inner locator with the frame CSS selector: frame=iframe[title="Payment"] >> role=button[name="Pay"].
-- Prefer the actual interactive element (the button or link) over a decorative child inside it (an icon or image) — clicking an <img> inside a <button> can fail because the button intercepts the click. If an element has a role in the snapshot (e.g. "button \"Menu\""), target it with role=button[name="Menu"], not the icon inside it.
+- Prefer the actual interactive element (the button or link) over a decorative child inside it (an icon or image) — clicking an <img> inside a <button> can fail because the button intercepts the click. If an element has a role in the snapshot (e.g. "button "Menu""), target it with role=button[name="Menu"], not the icon inside it.
 - If a locator resolves to more than one element (ambiguous), make it more specific — add text, narrow the role, or use >> nth=N — rather than repeating the same locator.
 - Locator priority: prefer a stable data-testid, then a stable id or app-owned attribute, then role plus accessible name, then stable visible text, then a CSS structure selector. Use CSS when the application is built from non-semantic elements such as clickable divs, but avoid generated class names and layout-dependent selectors when a stable attribute exists.
 - The interactive-elements section is a compact DOM supplement, not a second accessibility tree. Use its locator hints for div-only controls, and use the screenshot when the element is visible but has no reliable semantic or stable DOM signal. Each line has the shape role "name" | locator: value | href: url — the human-readable role "name" part at the start is there so you can identify the element, not something to send as a locator. Only the string after "locator:" is a valid locator; e.g. from the line link "View products" | locator: [data-testid="navbar-products-link"] | href: /catalog, the locator to use is [data-testid="navbar-products-link"], not link "View products" — that whole phrase is not Playwright syntax and will fail to parse.
@@ -547,7 +547,6 @@ export async function runAgentLoop(
     let error: string | undefined;
     let resultText: string;
     const safetyCountBefore = options.getSafetyBlockCount?.() ?? 0;
-    let safetyBlocked = 0;
 
     const actionNumber = String(actionCount + 1).padStart(String(options.maxSteps).length, ' ');
     options.logger?.verbose(
@@ -627,7 +626,7 @@ export async function runAgentLoop(
       flowBurstNetwork = flowBurstNetwork.concat(options.recorder?.network.slice(networkBeforeStep) ?? []);
     }
 
-    safetyBlocked = Math.max(0, (options.getSafetyBlockCount?.() ?? safetyCountBefore) - safetyCountBefore);
+    const safetyBlocked = Math.max(0, (options.getSafetyBlockCount?.() ?? safetyCountBefore) - safetyCountBefore);
     if (safetyBlocked > 0) {
       resultText += `\nSafety policy blocked ${safetyBlocked} network request${safetyBlocked === 1 ? '' : 's'} during this action. The request was not sent; do not repeat the same action. Choose a different safe path or leave the flow incomplete.`;
       options.logger?.verbose(

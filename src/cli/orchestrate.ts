@@ -231,10 +231,10 @@ export function redactorForArgs(args: CliArgs): Redactor {
     args.storageStatePath,
     args.safetyConfigPath,
     args.provider === 'ollama' ? undefined : process.env[apiKeyEnvVar],
-    // A coverage run's own email/password/storageState overrides the global auth for that run
-    // only (see createCoverageRuns) — fold them in here too, since this redactor is shared
-    // (the execution's evidence log, the app logger) rather than rebuilt per run.
-    ...(args.coverageRuns ?? []).flatMap((run) => [run.email, run.password, run.storageState]),
+    // A run's own email/password/storageState overrides the global auth for that run only (see
+    // createPersonaRuns) — fold them in here too, since this redactor is shared (the execution's
+    // evidence log, the app logger) rather than rebuilt per run.
+    ...(args.runs ?? []).flatMap((run) => [run.email, run.password, run.storageState]),
   ]);
 }
 
@@ -671,9 +671,9 @@ async function exploreAndVerifyInBrowser(
   }
 }
 
-export function createCoverageRuns(args: CliArgs): Array<{ id: string; name: string; args: CliArgs }> {
-  const configuredRuns = args.coverageRuns?.length
-    ? args.coverageRuns
+export function createPersonaRuns(args: CliArgs): Array<{ id: string; name: string; args: CliArgs }> {
+  const configuredRuns = args.runs?.length
+    ? args.runs
     : [{ name: args.personaName ? `${args.personaName} baseline` : 'default' }];
 
   return configuredRuns.map((run, index) => {
@@ -688,7 +688,7 @@ export function createCoverageRuns(args: CliArgs): Array<{ id: string; name: str
       name: run.name,
       args: {
         ...args,
-        coverageRuns: undefined,
+        runs: undefined,
         personaName: run.persona ?? args.personaName,
         maxSteps: run.maxSteps ?? args.maxSteps,
         scope: run.scope ?? args.scope,
@@ -701,17 +701,13 @@ export function createCoverageRuns(args: CliArgs): Array<{ id: string; name: str
   });
 }
 
-export async function exploreCoverage(
-  args: CliArgs,
-  executionId: string,
-  signal?: AbortSignal,
-): Promise<ExplorationBatch> {
+export async function exploreRuns(args: CliArgs, executionId: string, signal?: AbortSignal): Promise<ExplorationBatch> {
   mkdirSync(args.output, { recursive: true });
   const evidencePath = join(args.output, 'evidence.jsonl');
   const redactor = redactorForArgs(args);
   const evidenceLog = new EvidenceLog(evidencePath, redactor);
 
-  const configuredRuns = createCoverageRuns(args);
+  const configuredRuns = createPersonaRuns(args);
   const concurrency = Math.max(1, args.maxConcurrentPersonas);
   if (concurrency > 1) {
     // A non-animated spinner fallback once more than one persona can be exploring at a time —

@@ -2,7 +2,7 @@ import {
   loadAppwalkConfig,
   validateResolvedOptions,
   type BrowserEngine,
-  type CoverageRunConfig,
+  type RunConfig,
   type ProviderName,
 } from '../config.js';
 import type { LogLevel } from '../logging/logger.js';
@@ -39,7 +39,7 @@ export interface CliArgs {
   expectations: string[];
   flowSelection?: number[];
   configPath?: string;
-  coverageRuns?: CoverageRunConfig[];
+  runs?: RunConfig[];
   cliSpecified: Set<string>;
   logLevel: LogLevel;
 }
@@ -58,7 +58,7 @@ function printUsage(error?: string): never {
       '  -p, --password <password>                   Login password',
       '  -o, --output <dir>                          Output root; each CLI execution gets a subdirectory (default: ./appwalk-output)',
       '  -n, --max-steps <number>                    Exploration action budget (default: 25)',
-      '      --max-concurrent-personas <number>       How many coverage personas explore at once (default: 1)',
+      '      --max-concurrent-personas <number>       How many persona runs explore at once (default: 1)',
       '  -m, --model <model>                         Provider model (required)',
       '      --provider anthropic|gemini|ollama|grok|openai (required)',
       '      --browser chromium|firefox|webkit         Browser engine to drive (default: chromium)',
@@ -310,7 +310,7 @@ export function applyConfig(args: CliArgs): CliArgs {
   if (!args.cliSpecified.has('safetyConfigPath') && config.safety?.config) args.safetyConfigPath = config.safety.config;
   if (!args.cliSpecified.has('scope') && config.scope) args.scope = config.scope;
   if (!args.cliSpecified.has('expectations') && config.expect) args.expectations = config.expect;
-  args.coverageRuns = config.coverage?.runs;
+  args.runs = config.runs;
 
   if (!args.url) return printUsage('Missing URL. Pass it positionally or define url in ' + args.configPath + '.');
   if (!args.provider)
@@ -326,12 +326,10 @@ export function applyConfig(args: CliArgs): CliArgs {
   if (args.expectations.length > 0 && !args.scope) {
     return printUsage('--expect requires --scope. Expectations describe what should hold within a scoped exploration.');
   }
-  const invalidRunExpectation = args.coverageRuns?.find(
-    (run) => run.expect?.length && !(run.scope ?? args.scope)?.trim(),
-  );
+  const invalidRunExpectation = args.runs?.find((run) => run.expect?.length && !(run.scope ?? args.scope)?.trim());
   if (invalidRunExpectation) {
     return printUsage(
-      'coverage.runs.expect requires a run scope or a global scope. Expectations describe what should hold within a scoped exploration.',
+      'runs.expect requires a run scope or a global scope. Expectations describe what should hold within a scoped exploration.',
     );
   }
   return args;
