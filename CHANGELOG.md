@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Entries below are generated and maintained by [release-please](https://github.com/googleapis/release-please) from Conventional Commits PR titles. See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
+## [0.2.0](https://github.com/kubstack/appwalk/compare/v0.1.0...v0.2.0) (2026-09-07)
+
+
+### Features
+
+* switch npm publish to trusted publishing (OIDC) ([#14](https://github.com/kubstack/appwalk/issues/14)) ([34411fa](https://github.com/kubstack/appwalk/commit/34411fa09ffde6b8d24ba8ff916c404e4ebc943b))
+
 ## [0.1.0](https://github.com/kubstack/appwalk/releases/tag/appwalk-v0.1.0) (2026-09-07)
 
 Initial public release.
