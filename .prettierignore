@@ -3,3 +3,7 @@ dist
 appwalk-output
 appwalk-live
 *.log
+
+# Generated and maintained by release-please, not hand-written; its own markdown
+# style doesn't match Prettier's, and that's not something to fight.
+CHANGELOG.md
