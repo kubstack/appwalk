@@ -581,6 +581,7 @@ const REPORT_CSS = `
   .step-error{ color:var(--critical); font-size:12.5px; margin-top:2px; }
   .step-note{ color:var(--warning); font-size:12.5px; margin-top:2px; }
   .note{ margin:0 18px 12px; padding:9px 12px; border-radius:5px; font-size:13px; }
+  #view-coverage .note{ margin-left:0; margin-right:0; }
   .note.warning{ background:var(--warning-soft); color:var(--warning); }
   .note.critical{ background:var(--critical-soft); color:var(--critical); }
   .note.muted{ background:var(--surface-2); color:var(--muted); }
