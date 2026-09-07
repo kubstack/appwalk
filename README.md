@@ -1,7 +1,6 @@
 # Appwalk
 
 [![npm version](https://img.shields.io/npm/v/%40kubstack%2Fappwalk.svg)](https://www.npmjs.com/package/@kubstack/appwalk)
-[![License: MIT](https://img.shields.io/npm/l/%40kubstack%2Fappwalk.svg)](LICENSE)
 [![CI](https://github.com/kubstack/appwalk/actions/workflows/ci.yml/badge.svg)](https://github.com/kubstack/appwalk/actions/workflows/ci.yml)
 
 Appwalk is an AI-powered CLI for turning browser exploration into verified Playwright regression tests.
