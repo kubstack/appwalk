@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Entries below are generated and maintained by [release-please](https://github.com/googleapis/release-please) from Conventional Commits PR titles. See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
+## [0.2.2](https://github.com/kubstack/appwalk/compare/v0.2.1...v0.2.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* align blocked-methods list in the Coverage tab's safety note ([#21](https://github.com/kubstack/appwalk/issues/21)) ([6e6383b](https://github.com/kubstack/appwalk/commit/6e6383bb406910a04746495242f95852d76d4aa0))
+
 ## [0.2.1](https://github.com/kubstack/appwalk/compare/v0.2.0...v0.2.1) (2026-09-07)
 
 
