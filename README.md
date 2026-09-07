@@ -1,7 +1,7 @@
 # Appwalk
 
-[![npm version](https://img.shields.io/npm/v/appwalk.svg)](https://www.npmjs.com/package/appwalk)
-[![License: MIT](https://img.shields.io/npm/l/appwalk.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/%40kubstack%2Fappwalk.svg)](https://www.npmjs.com/package/@kubstack/appwalk)
+[![License: MIT](https://img.shields.io/npm/l/%40kubstack%2Fappwalk.svg)](LICENSE)
 [![CI](https://github.com/kubstack/appwalk/actions/workflows/ci.yml/badge.svg)](https://github.com/kubstack/appwalk/actions/workflows/ci.yml)
 
 Appwalk is an AI-powered CLI for turning browser exploration into verified Playwright regression tests.
@@ -53,7 +53,7 @@ npx playwright install chromium  # add firefox/webkit too if you plan to pass --
 
 PROVIDER="your-provider"  # openai, anthropic, gemini, grok, or ollama
 MODEL="your-model"
-npx appwalk run https://your-app.example \
+npx @kubstack/appwalk run https://your-app.example \
   --provider "$PROVIDER" \
   --model "$MODEL" \
   --persona mia \
@@ -67,7 +67,7 @@ For a hosted provider, set its provider-specific credential first: `OPENAI_API_K
 For a reusable setup, pass a configuration file explicitly:
 
 ```bash
-npx appwalk run --config ./appwalk.config.yaml
+npx @kubstack/appwalk run --config ./appwalk.config.yaml
 ```
 
 Appwalk does not auto-discover a config file. `--config` is always required when YAML configuration should be used. See [Configuration](docs/configuration.md).
@@ -86,14 +86,14 @@ Examples:
 # Explore only; no generated spec is written.
 PROVIDER="your-provider"
 MODEL="your-model"
-npx appwalk explore https://your-app.example \
+npx @kubstack/appwalk explore https://your-app.example \
   --provider "$PROVIDER" --model "$MODEL" --persona mia --max-steps 25
 
 # Generate all replay-confirmed flows from a previous execution.
-npx appwalk generate ./appwalk-output/<execution-id>
+npx @kubstack/appwalk generate ./appwalk-output/<execution-id>
 
 # Generate only selected confirmed flow IDs.
-npx appwalk generate ./appwalk-output/<execution-id> --flows 1,3
+npx @kubstack/appwalk generate ./appwalk-output/<execution-id> --flows 1,3
 ```
 
 Use `run` for exploration plus generation, and run the generated spec with Playwright when you want to execute the resulting regression tests.

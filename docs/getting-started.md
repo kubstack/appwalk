@@ -10,10 +10,10 @@ npx playwright install chromium
 
 The command above installs Chromium, the default engine. `--browser firefox` or `--browser webkit` (see [Commands and options](commands.md)) needs its own `npx playwright install firefox`/`webkit` first.
 
-Appwalk itself needs no separate install step; `npx appwalk` fetches and runs it on demand:
+Appwalk itself needs no separate install step; `npx @kubstack/appwalk` fetches and runs it on demand:
 
 ```bash
-npx appwalk <command> ...
+npx @kubstack/appwalk <command> ...
 ```
 
 ## 2. Choose a provider
@@ -37,7 +37,7 @@ Then provide both provider and model on the command line or in an explicitly pas
 ```bash
 PROVIDER="your-provider"  # openai, anthropic, gemini, grok, or ollama
 MODEL="your-model"
-npx appwalk run https://your-app.example \
+npx @kubstack/appwalk run https://your-app.example \
   --provider "$PROVIDER" \
   --model "$MODEL" \
   --persona mia \
@@ -50,13 +50,13 @@ If the application is public, omit `--email` and `--password`. If it has authent
 
 ```bash
 # Credential login, when the application has a normal username/password flow.
-npx appwalk run https://your-app.example \
+npx @kubstack/appwalk run https://your-app.example \
   --email "$APP_USERNAME" \
   --password "$APP_PASSWORD" \
   --provider "$PROVIDER" --model "$MODEL" --persona mia
 
 # Reuse a browser storage state captured separately.
-npx appwalk run https://your-app.example \
+npx @kubstack/appwalk run https://your-app.example \
   --storage-state ./auth/storage-state.json \
   --provider "$PROVIDER" --model "$MODEL" --persona mia
 ```
@@ -89,7 +89,7 @@ The generated suite may include a sibling `auth.ts` helper and a local `.secrets
 When you know the area you want to inspect, add a scope:
 
 ```bash
-npx appwalk run https://your-app.example \
+npx @kubstack/appwalk run https://your-app.example \
   --provider "$PROVIDER" --model "$MODEL" \
   --persona mia --max-steps 25 \
   --scope "Explore account settings and changing the notification preference" \

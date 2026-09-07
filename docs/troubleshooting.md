@@ -7,7 +7,7 @@ Provider and model are mandatory. Pass them directly or define both in a config 
 ```bash
 PROVIDER="your-provider"
 MODEL="your-model"
-npx appwalk run https://your-app.example \
+npx @kubstack/appwalk run https://your-app.example \
   --provider "$PROVIDER" --model "$MODEL"
 ```
 
@@ -60,14 +60,14 @@ Screenshots are sent only where the provider integration supports them, and a te
 Generation needs an explicit authentication setup. Appwalk does not reuse auth tokens from discovery artifacts, so pass the original credentials or a storage state:
 
 ```bash
-npx appwalk generate ./appwalk-output/<execution-id> \
+npx @kubstack/appwalk generate ./appwalk-output/<execution-id> \
   --email "$APP_USERNAME" --password "$APP_PASSWORD"
 ```
 
 For SSO or MFA:
 
 ```bash
-npx appwalk generate ./appwalk-output/<execution-id> \
+npx @kubstack/appwalk generate ./appwalk-output/<execution-id> \
   --storage-state ./auth/storage-state.json
 ```
 

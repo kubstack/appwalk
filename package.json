@@ -1,5 +1,8 @@
 {
-  "name": "appwalk",
+  "name": "@kubstack/appwalk",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "0.1.0",
   "description": "AI-powered CLI that turns browser exploration into verified Playwright regression tests.",
   "keywords": [
