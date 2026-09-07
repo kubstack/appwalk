@@ -46,7 +46,7 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.120.0",
+    "@anthropic-ai/sdk": "^0.123.0",
     "@google/genai": "^2.21.0",
     "dotenv": "^17.4.2",
     "openai": "^7.10.0",
