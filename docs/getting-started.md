@@ -1,14 +1,16 @@
 # Getting started
 
-This guide takes a new user from a checkout of Appwalk to a generated Playwright test.
+This guide takes a new user with nothing installed to a generated Playwright test.
 
 ## 1. Install
 
 ```bash
-npx playwright install chromium
+npx -p @kubstack/appwalk -- playwright install chromium
 ```
 
-The command above installs Chromium, the default engine. `--browser firefox` or `--browser webkit` (see [Commands and options](commands.md)) needs its own `npx playwright install firefox`/`webkit` first.
+The command above installs Chromium, the default engine. `--browser firefox` or `--browser webkit` (see [Commands and options](commands.md)) needs its own `npx -p @kubstack/appwalk -- playwright install firefox`/`webkit` first.
+
+Use `-p @kubstack/appwalk --` rather than a bare `npx playwright install`: it resolves the Playwright CLI to the exact version Appwalk depends on, so the downloaded browser build matches what Appwalk actually launches at runtime. A bare `npx playwright install` can resolve a different (often newer) Playwright version and download a browser build Appwalk doesn't recognize, failing with "Executable doesn't exist".
 
 Appwalk itself needs no separate install step; `npx @kubstack/appwalk` fetches and runs it on demand:
 

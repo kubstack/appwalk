@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## `browserType.launch: Executable doesn't exist at .../chrome-headless-shell...`
+
+The installed browser build doesn't match the Playwright version Appwalk depends on. This usually happens when the browser was installed with a bare `npx playwright install`, which can resolve a different (often newer) Playwright version than the one bundled with Appwalk. Reinstall using Appwalk's own resolved Playwright version instead:
+
+```bash
+npx -p @kubstack/appwalk -- playwright install chromium
+```
+
+See [Getting started](getting-started.md#1-install) for why `-p @kubstack/appwalk --` matters here.
+
 ## `Missing provider` or `Missing model`
 
 Provider and model are mandatory. Pass them directly or define both in a config file that is explicitly supplied with `--config`.

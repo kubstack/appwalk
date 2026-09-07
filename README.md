@@ -48,7 +48,7 @@ The core terms are deliberately simple:
 Requirements: Node.js 24 or newer, a Playwright browser installation, and an API key for the selected hosted provider.
 
 ```bash
-npx playwright install chromium  # add firefox/webkit too if you plan to pass --browser
+npx -p @kubstack/appwalk -- playwright install chromium  # add firefox/webkit too if you plan to pass --browser
 
 PROVIDER="your-provider"  # openai, anthropic, gemini, grok, or ollama
 MODEL="your-model"
