@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Entries below are generated and maintained by [release-please](https://github.com/googleapis/release-please) from Conventional Commits PR titles. See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
+## [0.3.0](https://github.com/kubstack/appwalk/compare/v0.2.3...v0.3.0) (2026-09-08)
+
+
+### Features
+
+* harden replay-based regression coverage and split large source files ([#27](https://github.com/kubstack/appwalk/issues/27)) ([ad712b5](https://github.com/kubstack/appwalk/commit/ad712b5813250b72b523d47545e49a3455861647))
+
 ## [0.2.3](https://github.com/kubstack/appwalk/compare/v0.2.2...v0.2.3) (2026-09-08)
 
 
