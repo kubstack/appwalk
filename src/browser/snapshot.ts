@@ -56,7 +56,25 @@ export async function toStepResult(page: Page, redactor: Redactor = defaultRedac
   return { url: redactor.url(page.url()), snapshot: await captureSnapshot(page, redactor) };
 }
 
+// Not specific to any one action: a click on a link, a checkbox with an onchange handler, Enter
+// submitting a form, a <select> that auto-navigates on change — any of them can trigger a
+// navigation as a side effect. If this observation starts while that navigation is still tearing
+// the previous document down, the page.evaluate() below fails with exactly this narrow, transient
+// error. Live exploration never sees it (the LLM round-trip between actions is plenty of time for
+// the navigation to settle first); a scripted replay runs fast enough to hit it for real.
+const EXECUTION_CONTEXT_DESTROYED_PATTERN = /Execution context was destroyed/;
+
 async function capturePageObservation(page: Page): Promise<PageObservation> {
+  try {
+    return await capturePageObservationOnce(page);
+  } catch (error) {
+    if (!(error instanceof Error) || !EXECUTION_CONTEXT_DESTROYED_PATTERN.test(error.message)) throw error;
+    await page.waitForLoadState('load').catch(() => undefined);
+    return await capturePageObservationOnce(page);
+  }
+}
+
+async function capturePageObservationOnce(page: Page): Promise<PageObservation> {
   const [accessibilityTree, domObservation] = await Promise.all([
     page.locator('body').ariaSnapshot(),
     page.evaluate(() => {
