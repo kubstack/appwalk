@@ -1,8 +1,13 @@
 import type { NetworkEntry } from '../evidence/recorder.js';
 
-const SUCCESS_URL_PATTERN = /success|thank|complete|confirmation|confirmed/i;
+// Bare short words are word-boundaried (\b) so they can't match as a substring of their own
+// opposite — "saved" alone would otherwise match inside "unsaved", "added" inside "padded".
+const SUCCESS_URL_PATTERN = /success|thank|complete|confirmation|confirmed|results|\bsaved\b|\bupdated\b|\badded\b|\buploaded\b/i;
+// "no results found" is deliberately not a signal here: several personas' own instructions (e.g.
+// noah) already treat landing on an empty state as an incomplete flow, not a success — matching it
+// here would contradict that.
 const SUCCESS_SNAPSHOT_PATTERN =
-  /thank you for your|successfully (submitted|completed|placed|created|registered)|(submitted|completed|placed|created|registered) successfully|your order has been|order confirmed|registration (successful|complete)/i;
+  /thank you for your|successfully (submitted|completed|placed|created|registered|saved|updated|added|uploaded|sent|subscribed)|(submitted|completed|placed|created|registered|saved|updated|added|uploaded|sent|subscribed) successfully|your order has been|order confirmed|registration (successful|complete)|(changes|settings|preferences) (have been |were )?saved|\d+\s+results?\s+found|signed in successfully|welcome back|added to (your |the )?(cart|list|favou?rites|wishlist|watchlist)|copied to clipboard|(message|email|invitation) sent|upload (complete|successful)/i;
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export function looksLikeSuccessByUrl(url: string): boolean {
