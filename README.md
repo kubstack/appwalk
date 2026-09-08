@@ -31,7 +31,7 @@ The important distinction is verification: an interesting action sequence is not
 
 ## Quick start
 
-Requirements: Node.js 24+, a Playwright browser, and an API key for your chosen hosted provider. Appwalk runs through `npx`, so there is no separate global install.
+Requirements: Node.js 24+, a Playwright browser, and an API key for your chosen hosted provider. Appwalk is distributed through npm and runs via `npx`, so there is no separate global install.
 
 ```bash
 # Install the browser version used by Appwalk.
