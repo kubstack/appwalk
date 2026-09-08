@@ -102,6 +102,28 @@ export function formatTestTitle(name: string): string {
 // so structural signals are tried first, with English text as a fallback.
 export const GENERATED_CREDENTIALS_FILE = '.secrets.json';
 export const GENERATED_STORAGE_STATE_FILE = '.storage-state.json';
+// Per-flow, as opposed to GENERATED_STORAGE_STATE_FILE's single global one: a flow recorded after
+// an earlier flow in the same persona run (e.g. one that already dismissed a consent banner or
+// toggled a preference) needs that same browser storage to reach the page state it was actually
+// verified against, not a blank one. Exported so generated-suite.ts can give these the same
+// sensitive-file treatment (owner-only permissions) as the credentials/global storage state files.
+export const GENERATED_FLOW_STORAGE_STATE_PREFIX = '.storage-state.flow-';
+
+/** True only when there is something in the flow's captured storage worth preloading — most flows
+ * after the first carry forward an unchanged, empty snapshot, and generating a same-origin context
+ * override plus a sidecar file for that would be pure noise. */
+function hasMeaningfulStorageState(json: string | undefined): boolean {
+  if (!json) return false;
+  try {
+    const parsed = JSON.parse(json) as { cookies?: unknown[]; origins?: { localStorage?: unknown[] }[] };
+    return (
+      (parsed.cookies?.length ?? 0) > 0 ||
+      (parsed.origins?.some((origin) => (origin.localStorage?.length ?? 0) > 0) ?? false)
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Selectors come from CONSENT_ACCEPT_SELECTORS, so the runtime and this generated helper stay in
 // sync with the same list of known consent-management platforms.
@@ -652,7 +674,11 @@ function findConfirmationAssertion(entries: EvidenceEntry[]): string | null {
     // A literal single quote inside the heading text gets YAML-doubled to avoid ending the outer
     // single-quoted wrapper early — undo it, or the assertion targets text the page never renders.
     const headingText = headingMatch[1]!.replace(/''/g, "'");
-    return `await expect(page.getByRole('heading', { name: '${escapeJsString(headingText)}' })).toBeVisible();`;
+    // exact: true matters here specifically: getByRole's default name match is a case-insensitive
+    // substring, and this heading text is often the literal search keyword just typed — which is
+    // then guaranteed to also appear inside every individual result's own title on that same page,
+    // turning a plain substring match into a strict-mode violation (resolves to multiple elements).
+    return `await expect(page.getByRole('heading', { name: '${escapeJsString(headingText)}', exact: true })).toBeVisible();`;
   }
 
   // Match origin+pathname only, not the full URL: many sites encode a search timestamp or other
@@ -674,6 +700,7 @@ function flowToTest(
   options: CodegenOptions,
   testTitle = formatTestTitle(flow.title ?? flow.name),
   fixtureScenario?: string,
+  flowStorageStateArtifact?: string,
 ): string {
   const toolCalls = flow.entries.filter(
     (entry) => entry.toolCall && !entry.error && entry.toolCall.name !== 'flowComplete',
@@ -731,8 +758,9 @@ function flowToTest(
   );
   // A device profile is a newContext()-time-only option (viewport alone can change mid-session,
   // but user agent/touch/scale factor cannot) — a flow discovered under one needs its own explicit
-  // context too, exactly like storageState, even when it has no storageState of its own.
-  const needsOwnContext = Boolean(flow.devicePreset);
+  // context too, exactly like storageState, even when it has no storageState of its own. A flow
+  // with its own captured storageState needs the same, for the same reason as a device profile.
+  const needsOwnContext = Boolean(flow.devicePreset) || Boolean(flowStorageStateArtifact);
   const fixtureParams =
     needsOwnContext || needsBrowserFixture ? (needsOwnContext ? '{ browser }' : '{ page, browser }') : '{ page }';
   const setupNavigationLines =
@@ -750,13 +778,18 @@ function flowToTest(
   if (needsOwnContext) {
     const contextOptionEntries = [
       ...(flow.devicePreset ? [`...devices['${escapeJsString(flow.devicePreset)}']`] : []),
-      ...(options.storageStatePath
-        ? [
-            options.storageStateArtifactPath
-              ? `storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}')`
-              : `storageState: '${escapeJsString(options.storageStatePath)}'`,
-          ]
-        : []),
+      // A flow's own captured storageState reflects exactly what it was verified against, and
+      // takes priority over the global one — the same rule the live replay already follows
+      // (see replay-execution.ts's flowStorageState).
+      ...(flowStorageStateArtifact
+        ? [`storageState: join(generatedSuiteDirectory, '${escapeJsString(flowStorageStateArtifact)}')`]
+        : options.storageStatePath
+          ? [
+              options.storageStateArtifactPath
+                ? `storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}')`
+                : `storageState: '${escapeJsString(options.storageStatePath)}'`,
+            ]
+          : []),
     ];
     const contextOptions = contextOptionEntries.length ? `{ ${contextOptionEntries.join(', ')} }` : '';
     const indentedBody = body
@@ -891,6 +924,16 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
   const hasFixtures = fixturePlan.artifacts.length > 0;
   const hasDeviceProfile = flows.some((flow) => Boolean(flow.devicePreset));
   const hasDownload = flows.some((flow) => flow.entries.some((entry) => entry.toolCall?.name === 'download'));
+  // index+1, zero-padded to match the flow-NNN convention planFixtureScenarios already uses.
+  const flowStorageStateArtifacts = new Map<number, string>();
+  flows.forEach((flow, index) => {
+    if (hasMeaningfulStorageState(flow.startStorageState)) {
+      flowStorageStateArtifacts.set(
+        index,
+        `${GENERATED_FLOW_STORAGE_STATE_PREFIX}${String(index + 1).padStart(3, '0')}.json`,
+      );
+    }
+  });
 
   const parts: string[] = [
     hasDeviceProfile
@@ -904,17 +947,19 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
   if (hasFixtures) parts.push("import { installFixtures, loadScenario } from './fixtures.js';");
   if (hasDownload) parts.push("import { stat } from 'node:fs/promises';");
 
+  // Needed either for the one global test.use() below, or for any per-flow storageState context
+  // option — both reference the same generatedSuiteDirectory helper.
+  if ((hasStorageState && options.storageStateArtifactPath) || flowStorageStateArtifacts.size > 0) {
+    parts.push("import { dirname, join } from 'node:path';");
+    parts.push("import { fileURLToPath } from 'node:url';");
+    parts.push('const generatedSuiteDirectory = dirname(fileURLToPath(import.meta.url));');
+  }
   if (hasStorageState) {
-    if (options.storageStateArtifactPath) {
-      parts.push("import { dirname, join } from 'node:path';");
-      parts.push("import { fileURLToPath } from 'node:url';");
-      parts.push('const generatedSuiteDirectory = dirname(fileURLToPath(import.meta.url));');
-      parts.push(
-        `test.use({ storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}') });`,
-      );
-    } else {
-      parts.push(`test.use({ storageState: '${escapeJsString(options.storageStatePath!)}' });`);
-    }
+    parts.push(
+      options.storageStateArtifactPath
+        ? `test.use({ storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}') });`
+        : `test.use({ storageState: '${escapeJsString(options.storageStatePath!)}' });`,
+    );
   }
   const baseTitleCounts = new Map<string, number>();
   for (const flow of flows) {
@@ -934,13 +979,23 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
       testTitle = `${titleRoot} (${suffix++})`;
     }
     usedTitles.add(testTitle);
-    parts.push(flowToTest(flow, options, testTitle, fixturePlan.scenarioNames[index]));
+    parts.push(
+      flowToTest(flow, options, testTitle, fixturePlan.scenarioNames[index], flowStorageStateArtifacts.get(index)),
+    );
   }
+
+  const flowStorageStateFiles: GeneratedSpecArtifact[] = flows.flatMap((flow, index) => {
+    const relativePath = flowStorageStateArtifacts.get(index);
+    if (!relativePath) return [];
+    const content = JSON.stringify(JSON.parse(flow.startStorageState!), null, 2) + '\n';
+    return [{ relativePath, content }];
+  });
 
   return {
     spec: parts.join('\n\n') + '\n',
     artifacts: [
       { relativePath: 'consent.ts', content: GENERATED_CONSENT_HELPER },
+      ...flowStorageStateFiles,
       ...(hasLogin
         ? [
             { relativePath: 'auth.ts', content: GENERATED_AUTH_HELPER },

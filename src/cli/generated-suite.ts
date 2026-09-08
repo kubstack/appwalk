@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   GENERATED_CREDENTIALS_FILE,
+  GENERATED_FLOW_STORAGE_STATE_PREFIX,
   GENERATED_STORAGE_STATE_FILE,
   generateSpecBundle,
   type CodegenOptions,
@@ -45,7 +46,9 @@ export function writeGeneratedSuite(
     const artifactPath = join(directory, artifact.relativePath);
     mkdirSync(dirname(artifactPath), { recursive: true });
     const isSensitiveArtifact =
-      artifact.relativePath === GENERATED_CREDENTIALS_FILE || artifact.relativePath === GENERATED_STORAGE_STATE_FILE;
+      artifact.relativePath === GENERATED_CREDENTIALS_FILE ||
+      artifact.relativePath === GENERATED_STORAGE_STATE_FILE ||
+      artifact.relativePath.startsWith(GENERATED_FLOW_STORAGE_STATE_PREFIX);
     if (isSensitiveArtifact) {
       writeFileSync(artifactPath, artifact.content, { mode: 0o600 });
       chmodSync(artifactPath, 0o600);

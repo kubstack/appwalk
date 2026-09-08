@@ -137,6 +137,28 @@ test('generated credential sidecar is immediately usable and owner-readable only
   }
 });
 
+test('a per-flow storage state sidecar is written owner-readable only, same as the credentials/global storage state files', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'appwalk-generated-suite-'));
+  try {
+    const storageState = JSON.stringify({
+      cookies: [{ name: 'consent', value: 'accepted', domain: 'example.test', path: '/' }],
+      origins: [],
+    });
+    writeGeneratedSuite(
+      directory,
+      [
+        { name: 'First-time visitor', entries: [] },
+        { name: 'Returning after consent', startStorageState: storageState, entries: [] },
+      ],
+      { url: 'https://example.test' },
+    );
+    const sidecarPath = join(directory, '.storage-state.flow-002.json');
+    assert.equal(statSync(sidecarPath).mode & 0o777, 0o600);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('generated suites copy supplied storage state beside the spec', () => {
   const sourceDirectory = mkdtempSync(join(tmpdir(), 'appwalk-storage-source-'));
   const outputDirectory = mkdtempSync(join(tmpdir(), 'appwalk-storage-output-'));
@@ -521,7 +543,7 @@ test('a flow with a device preset gets its own context with the device spread in
   assert.match(spec, /await flowContext\.close\(\);/);
 });
 
-test('a device preset does not inline captured storage state', () => {
+test('an empty captured storage state is not inlined or written as a sidecar', () => {
   const storageState = JSON.stringify({ cookies: [], origins: [] });
   const bundle = generateSpecBundle(
     [
@@ -540,7 +562,40 @@ test('a device preset does not inline captured storage state', () => {
   assert.match(spec, /const flowContext = await browser\.newContext\(\{ \.\.\.devices\['iPhone 17'\] \}\);/);
   assert.doesNotMatch(spec, /loadStorageState/);
   assert.doesNotMatch(spec, /"cookies"|"origins"/);
+  assert.doesNotMatch(spec, /storageState:/);
   assert.match(spec, /await page\.goto\('https:\/\/example\.test\/account'\);/);
+  assert.equal(
+    bundle.artifacts.some((artifact) => artifact.relativePath.startsWith('.storage-state.flow-')),
+    false,
+  );
+});
+
+test('a flow with a meaningful captured storage state gets its own context preloaded from a sidecar file', () => {
+  const storageState = JSON.stringify({
+    cookies: [{ name: 'consent', value: 'accepted', domain: 'example.test', path: '/' }],
+    origins: [],
+  });
+  const bundle = generateSpecBundle(
+    [
+      { name: 'First-time visitor', entries: [] },
+      { name: 'Returning after consent', startStorageState: storageState, entries: [] },
+    ],
+    { url: 'https://example.test' },
+  );
+  const spec = bundle.spec;
+
+  assert.match(spec, /import \{ dirname, join \} from 'node:path';/);
+  assert.match(
+    spec,
+    /const flowContext = await browser\.newContext\(\{ storageState: join\(generatedSuiteDirectory, '\.storage-state\.flow-002\.json'\) \}\);/,
+  );
+  // The other, storageState-less flow must stay on the plain ambient `page` fixture.
+  assert.match(spec, /test\('First-time visitor', async \(\{ page \}\) => \{/);
+
+  const artifact = bundle.artifacts.find((a) => a.relativePath === '.storage-state.flow-002.json');
+  assert.ok(artifact, 'expected a per-flow storage state sidecar file');
+  assert.match(artifact.content, /"consent"/);
+  assert.match(artifact.content, /"accepted"/);
 });
 
 test('a flow without a device preset still uses the plain ambient page fixture', () => {
@@ -575,6 +630,27 @@ test('consent is dismissed before login, since a banner can cover the login form
   const loginIndex = spec.indexOf('await loginWithConfiguredCredentials(page);');
   assert.ok(gotoIndex > -1 && dismissIndex > -1 && loginIndex > -1);
   assert.ok(gotoIndex < dismissIndex && dismissIndex < loginIndex);
+});
+
+test('the heading confirmation fallback uses exact match, so a search keyword that recurs in every result title does not resolve to multiple elements', () => {
+  const entry = {
+    index: 0,
+    flowIndex: 0,
+    timestamp: '2026-01-01T00:00:00.000Z',
+    toolCall: { name: 'click', input: { locator: '#search' } },
+    result: {
+      url: 'https://example.test/search/results/?q=notebook',
+      snapshot: '- heading "notebook" [level=1]\n- heading "Notebook 2v1 - great deal" [level=2]',
+    },
+    network: [],
+    console: [],
+  } as unknown as EvidenceEntry;
+
+  const spec = generateSpec([{ name: 'Search listings', entries: [entry] }], {
+    url: 'https://example.test',
+  });
+
+  assert.match(spec, /getByRole\('heading', \{ name: 'notebook', exact: true \}\)/);
 });
 
 test('the URL confirmation fallback ignores the query string, so a search timestamp baked into it at discovery does not fail replay later', () => {
