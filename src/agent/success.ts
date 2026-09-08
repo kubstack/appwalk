@@ -2,7 +2,8 @@ import type { NetworkEntry } from '../evidence/recorder.js';
 
 // Bare short words are word-boundaried (\b) so they can't match as a substring of their own
 // opposite — "saved" alone would otherwise match inside "unsaved", "added" inside "padded".
-const SUCCESS_URL_PATTERN = /success|thank|complete|confirmation|confirmed|results|\bsaved\b|\bupdated\b|\badded\b|\buploaded\b/i;
+const SUCCESS_URL_PATTERN =
+  /success|thank|complete|confirmation|confirmed|results|\bsaved\b|\bupdated\b|\badded\b|\buploaded\b/i;
 // "no results found" is deliberately not a signal here: several personas' own instructions (e.g.
 // noah) already treat landing on an empty state as an incomplete flow, not a success — matching it
 // here would contradict that.

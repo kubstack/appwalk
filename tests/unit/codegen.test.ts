@@ -104,7 +104,12 @@ test('generated response fixtures live in shared artifacts and variants use patc
   assert.doesNotMatch(fixturesHelper.content, /methodQueues/);
 
   const artifactPaths = bundle.artifacts.map((artifact) => artifact.relativePath);
-  assert.deepEqual(artifactPaths, ['fixtures.ts', 'fixtures/flow-001.base.json', 'fixtures/flow-001-variant-001.json']);
+  assert.deepEqual(artifactPaths, [
+    'consent.ts',
+    'fixtures.ts',
+    'fixtures/flow-001.base.json',
+    'fixtures/flow-001-variant-001.json',
+  ]);
   const variantArtifact = bundle.artifacts.find((artifact) => artifact.relativePath.endsWith('variant-001.json'));
   assert.ok(variantArtifact);
   assert.match(variantArtifact.content, /"base": "flow-001\.base\.json"/);
@@ -196,9 +201,12 @@ test('a representative generated suite compiles as TypeScript', () => {
         password: 'secret',
       },
     );
-    const sourcePaths = [output.specPath, join(directory, 'auth.ts'), output.fixtureHelperPath].filter(
-      (path): path is string => path !== undefined && existsSync(path),
-    );
+    const sourcePaths = [
+      output.specPath,
+      join(directory, 'auth.ts'),
+      join(directory, 'consent.ts'),
+      output.fixtureHelperPath,
+    ].filter((path): path is string => path !== undefined && existsSync(path));
     const program = ts.createProgram(sourcePaths, {
       target: ts.ScriptTarget.ES2023,
       module: ts.ModuleKind.NodeNext,
@@ -540,6 +548,33 @@ test('a flow without a device preset still uses the plain ambient page fixture',
 
   assert.doesNotMatch(spec, /devices/);
   assert.match(spec, /test\('Desktop checkout', async \(\{ page \}\) => \{/);
+});
+
+test('every generated suite dismisses a consent banner right after navigating, with no login configured', () => {
+  const bundle = generateSpecBundle([{ name: 'Anonymous browse', entries: [] }], { url: 'https://example.test' });
+
+  assert.match(bundle.spec, /import \{ dismissConsentBanner \} from '\.\/consent\.js';/);
+  assert.match(
+    bundle.spec,
+    /await page\.goto\('https:\/\/example\.test'\);\s*\n\s*await dismissConsentBanner\(page\);/,
+  );
+  const consentHelper = bundle.artifacts.find((artifact) => artifact.relativePath === 'consent.ts');
+  assert.ok(consentHelper, 'consent.ts must be generated even without login or fixtures');
+  assert.match(consentHelper.content, /didomi-notice-agree-button/);
+});
+
+test('consent is dismissed before login, since a banner can cover the login form itself', () => {
+  const spec = generateSpec([{ name: 'Returning customer', entries: [] }], {
+    url: 'https://example.test',
+    username: 'tester',
+    password: 'secret',
+  });
+
+  const gotoIndex = spec.indexOf(`await page.goto('https://example.test');`);
+  const dismissIndex = spec.indexOf('await dismissConsentBanner(page);');
+  const loginIndex = spec.indexOf('await loginWithConfiguredCredentials(page);');
+  assert.ok(gotoIndex > -1 && dismissIndex > -1 && loginIndex > -1);
+  assert.ok(gotoIndex < dismissIndex && dismissIndex < loginIndex);
 });
 
 test('the URL confirmation fallback ignores the query string, so a search timestamp baked into it at discovery does not fail replay later', () => {

@@ -5,6 +5,7 @@ import { runAgentLoop, type LoopResult } from '../agent/loop.js';
 import { PERSONAS, type PersonaIntent } from '../agent/personas.js';
 import type { TabRegistryHandle } from '../agent/tools.js';
 import { login } from '../browser/login.js';
+import { dismissKnownConsentBanner } from '../browser/consent.js';
 import { EvidenceLog, readEvidenceLog, type EvidenceEntry, type EvidenceReadIssue } from '../evidence/log.js';
 import { EvidenceRecorder, type NetworkEntry, type RuntimeErrorEntry } from '../evidence/recorder.js';
 import { extractResponseFixtures } from '../response/variants.js';
@@ -207,12 +208,14 @@ async function navigateOrLogin(
   if (hasPreloadedState || args.storageStatePath) {
     logger.debug('browser.navigation_started', 'Navigating with preloaded storage state', { startUrl });
     await page.goto(startUrl);
+    await dismissKnownConsentBanner(page);
   } else if (args.email && args.password) {
     logger.debug('browser.navigation_started', 'Navigating with credential login', { startUrl });
     await login(page, startUrl, args.email, args.password, logger);
   } else {
     logger.debug('browser.navigation_started', 'Navigating as an anonymous session', { startUrl });
     await page.goto(startUrl);
+    await dismissKnownConsentBanner(page);
   }
 }
 

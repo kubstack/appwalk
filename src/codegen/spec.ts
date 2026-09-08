@@ -4,6 +4,7 @@ import { type ResponseFixture, type ResponseVariant } from '../response/variants
 import { escapeJsString, serializeJsValue, toLocatorExpression } from './locator.js';
 import { assertValidWebUrl } from '../url.js';
 import { LOGIN_CONTRACT } from '../browser/login-contract.js';
+import { CONSENT_ACCEPT_SELECTORS } from '../browser/consent.js';
 import { TOOL_DEFINITIONS } from '../agent/tools.js';
 import { validateToolInput } from '../agent/validation.js';
 import type { ExpectationObservation } from '../types.js';
@@ -101,6 +102,26 @@ export function formatTestTitle(name: string): string {
 // so structural signals are tried first, with English text as a fallback.
 export const GENERATED_CREDENTIALS_FILE = '.secrets.json';
 export const GENERATED_STORAGE_STATE_FILE = '.storage-state.json';
+
+// Selectors come from CONSENT_ACCEPT_SELECTORS, so the runtime and this generated helper stay in
+// sync with the same list of known consent-management platforms.
+const GENERATED_CONSENT_HELPER = `import type { Page } from 'playwright/test';
+
+const CONSENT_ACCEPT_SELECTORS: readonly string[] = ${JSON.stringify(CONSENT_ACCEPT_SELECTORS)};
+
+export async function dismissConsentBanner(page: Page): Promise<void> {
+  for (const selector of CONSENT_ACCEPT_SELECTORS) {
+    const locator = page.locator(selector).first();
+    try {
+      if ((await locator.count()) === 0) continue;
+      await locator.click({ timeout: 1500 });
+      return;
+    } catch {
+      // Present but not clickable in time — try the next known selector.
+    }
+  }
+}
+`;
 
 const GENERATED_AUTH_HELPER = `import type { Locator, Page } from 'playwright/test';
 import { readFileSync } from 'node:fs';
@@ -718,12 +739,14 @@ function flowToTest(
     options.username && options.password
       ? [
           `await page.goto('${escapeJsString(options.url)}');`,
+          // A consent banner can cover the login form itself, so it must clear before login looks for one.
+          'await dismissConsentBanner(page);',
           'await loginWithConfiguredCredentials(page);',
           ...(flow.startUrl && flow.startUrl !== options.url
-            ? [`await page.goto('${escapeJsString(flow.startUrl)}');`]
+            ? [`await page.goto('${escapeJsString(flow.startUrl)}');`, 'await dismissConsentBanner(page);']
             : []),
         ]
-      : [`await page.goto('${escapeJsString(flow.startUrl ?? options.url)}');`];
+      : [`await page.goto('${escapeJsString(flow.startUrl ?? options.url)}');`, 'await dismissConsentBanner(page);'];
   if (needsOwnContext) {
     const contextOptionEntries = [
       ...(flow.devicePreset ? [`...devices['${escapeJsString(flow.devicePreset)}']`] : []),
@@ -873,6 +896,9 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
     hasDeviceProfile
       ? "import { test, expect, devices } from 'playwright/test';"
       : "import { test, expect } from 'playwright/test';",
+    // Unconditional, unlike auth.ts/fixtures.ts: whether the target needs a cookie/consent banner
+    // dismissed has nothing to do with whether it has login or captured response fixtures.
+    "import { dismissConsentBanner } from './consent.js';",
   ];
   if (hasLogin) parts.push("import { loginWithConfiguredCredentials } from './auth.js';");
   if (hasFixtures) parts.push("import { installFixtures, loadScenario } from './fixtures.js';");
@@ -914,6 +940,7 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
   return {
     spec: parts.join('\n\n') + '\n',
     artifacts: [
+      { relativePath: 'consent.ts', content: GENERATED_CONSENT_HELPER },
       ...(hasLogin
         ? [
             { relativePath: 'auth.ts', content: GENERATED_AUTH_HELPER },
