@@ -102,7 +102,7 @@ export function formatTestTitle(name: string): string {
 export const GENERATED_CREDENTIALS_FILE = '.secrets.json';
 export const GENERATED_STORAGE_STATE_FILE = '.storage-state.json';
 
-const GENERATED_AUTH_HELPER = `import type { Locator, Page } from '@playwright/test';
+const GENERATED_AUTH_HELPER = `import type { Locator, Page } from 'playwright/test';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -234,7 +234,7 @@ export async function loginWithConfiguredCredentials(page: Page): Promise<void> 
 const GENERATED_FIXTURES_HELPER = `import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { BrowserContext } from '@playwright/test';
+import type { BrowserContext } from 'playwright/test';
 
 type ResponseFixture = {
   method: string;
@@ -533,7 +533,7 @@ function expectationToStatement(entry: EvidenceEntry): string | null {
         : null;
     case 'urlContains':
       return observation.value !== undefined
-        ? `await expect(page).toHaveURL(new RegExp('${escapeJsString(observation.value)}'));`
+        ? `await expect(page).toHaveURL(new RegExp('${escapeJsString(escapeRegExp(observation.value))}'));`
         : null;
     case 'urlEquals':
       return observation.value !== undefined
@@ -615,6 +615,10 @@ function codegenViewportDimension(value: unknown, name: string): number {
   return dimension;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Picks the flow's confirmation assertion from the last successful step — prefers a heading (usually the clearest "this is done" signal), falls back to the final URL. */
 function findConfirmationAssertion(entries: EvidenceEntry[]): string | null {
   const lastWithResult = [...entries].reverse().find((e) => e.result);
@@ -629,7 +633,19 @@ function findConfirmationAssertion(entries: EvidenceEntry[]): string | null {
     const headingText = headingMatch[1]!.replace(/''/g, "'");
     return `await expect(page.getByRole('heading', { name: '${escapeJsString(headingText)}' })).toBeVisible();`;
   }
-  return `await expect(page).toHaveURL('${escapeJsString(lastWithResult.result.url)}');`;
+
+  // Match origin+pathname only, not the full URL: many sites encode a search timestamp or other
+  // request-specific state into the query string, so an exact-URL assertion recorded at discovery
+  // time is guaranteed to fail on every later replay even though the flow still lands on the right page.
+  const finalUrl = lastWithResult.result.url;
+  let matchTarget = finalUrl;
+  try {
+    const parsed = new URL(finalUrl);
+    matchTarget = parsed.origin + parsed.pathname;
+  } catch {
+    // Keep the full string if it doesn't parse as a URL.
+  }
+  return `await expect(page).toHaveURL(new RegExp('^${escapeJsString(escapeRegExp(matchTarget))}(?:[?#]|$)'));`;
 }
 
 function flowToTest(
@@ -855,8 +871,8 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
 
   const parts: string[] = [
     hasDeviceProfile
-      ? "import { test, expect, devices } from '@playwright/test';"
-      : "import { test, expect } from '@playwright/test';",
+      ? "import { test, expect, devices } from 'playwright/test';"
+      : "import { test, expect } from 'playwright/test';",
   ];
   if (hasLogin) parts.push("import { loginWithConfiguredCredentials } from './auth.js';");
   if (hasFixtures) parts.push("import { installFixtures, loadScenario } from './fixtures.js';");

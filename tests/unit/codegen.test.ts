@@ -158,7 +158,7 @@ test('generated suites copy supplied storage state beside the spec', () => {
 
 test('a representative generated suite compiles as TypeScript', () => {
   // Keep this temporary directory below the repository so TypeScript resolves the same
-  // node_modules that a user has after installing Appwalk, including @playwright/test.
+  // node_modules that a user has after installing Appwalk, including playwright/test.
   const directory = mkdtempSync(join(process.cwd(), '.appwalk-generated-compile-'));
   try {
     const output = writeGeneratedSuite(
@@ -504,7 +504,7 @@ test('a flow with a device preset gets its own context with the device spread in
     { url: 'https://example.test' },
   );
 
-  assert.match(spec, /import \{ test, expect, devices \} from '@playwright\/test';/);
+  assert.match(spec, /import \{ test, expect, devices \} from 'playwright\/test';/);
   assert.match(spec, /test\('Mobile checkout', async \(\{ browser \}\) => \{/);
   assert.match(spec, /const flowContext = await browser\.newContext\(\{ \.\.\.devices\['iPhone 17'\] \}\);/);
   assert.match(spec, /browser\.newContext\(\{ \.\.\.devices\['iPhone 17'\], storageState \}\)/);
@@ -540,4 +540,35 @@ test('a flow without a device preset still uses the plain ambient page fixture',
 
   assert.doesNotMatch(spec, /devices/);
   assert.match(spec, /test\('Desktop checkout', async \(\{ page \}\) => \{/);
+});
+
+test('the URL confirmation fallback ignores the query string, so a search timestamp baked into it at discovery does not fail replay later', () => {
+  const entry = {
+    index: 0,
+    flowIndex: 0,
+    timestamp: '2026-01-01T00:00:00.000Z',
+    toolCall: { name: 'click', input: { locator: '#cmdSearch' } },
+    result: {
+      url: 'https://example.test/search/results/?token=abc123&date=08.09.2026+17%3A03&cmd=cmdForceRes',
+      snapshot: 'no heading here',
+    },
+    network: [],
+    console: [],
+  } as unknown as EvidenceEntry;
+
+  const spec = generateSpec([{ name: 'Search connection', entries: [entry] }], {
+    url: 'https://example.test',
+  });
+
+  assert.doesNotMatch(spec, /token=abc123/);
+
+  const match = spec.match(/toHaveURL\(new RegExp\('([^']+)'\)\)/);
+  assert.ok(match, 'expected a RegExp-based confirmation assertion');
+  const pattern = new RegExp(JSON.parse(`"${match[1]}"`));
+  assert.ok(
+    pattern.test('https://example.test/search/results/?token=different&date=09.09.2026+18%3A45'),
+    'a later replay with a different search timestamp in the query string must still match',
+  );
+  assert.ok(pattern.test('https://example.test/search/results/'));
+  assert.ok(!pattern.test('https://example.test/search/departures/'), 'a different page must not match');
 });

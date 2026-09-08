@@ -78,7 +78,14 @@ Open `report.html` first. It is the human-facing result. The same directory cont
 
 ## 5. Run generated tests
 
-Generated tests use `@playwright/test` and are independent tests, one per confirmed flow. Run one generated spec with:
+Generated tests use `playwright/test`, the test runner bundled with the `playwright` package, and are independent tests, one per confirmed flow. Running a generated spec needs a local `playwright` install reachable from that directory (a global `npm install -g`/`npx` install does not satisfy `import` resolution). If the target directory has no Node project yet:
+
+```bash
+npm init -y
+npm install -D playwright
+```
+
+Then run one generated spec with:
 
 ```bash
 npx playwright test ./appwalk-output/<execution-id>/discovered.spec.ts
