@@ -3,7 +3,7 @@ import { type BrowserLifecycle, type BrowserRestartHooks } from '../browser/acti
 import { captureScreenshot, toStepResult } from '../browser/snapshot.js';
 import type { EvidenceRecorder, NetworkEntry } from '../evidence/recorder.js';
 import type { LlmProvider } from '../providers/provider.js';
-import type { ExpectationObservation, ExpectationStatus, StepResult } from '../types.js';
+import type { ExpectationObservation, StepResult } from '../types.js';
 import type { Logger } from '../logging/logger.js';
 import type { Persona } from './personas.js';
 import { executeToolCall, TOOL_DEFINITIONS } from './tools.js';
@@ -13,263 +13,26 @@ import type { VerificationMode } from './verification.js';
 import { verifyFlow } from './verification.js';
 import { defaultRedactor, type Redactor } from '../security/redaction.js';
 import type { SafetyRequestOptions } from '../safety/guard.js';
-import { isValidBurstCount } from '../limits.js';
+import { buildSystemPrompt } from './system-prompt.js';
+import type { FlowResult, LoopResult, LoopStep } from './loop-types.js';
+import {
+  actionBudgetCost,
+  actionDescription,
+  actionFailureReason,
+  actionLabel,
+  aggregateExpectationResults,
+  checkpointInput,
+  clipForCheckpoint,
+  DEFAULT_CONTEXT_CHECKPOINT_ACTIONS,
+  lastKnownSnapshot,
+  lastKnownUrl,
+  MAX_EMPTY_FLOW_ENDINGS,
+  MODEL_SNAPSHOT_MAX_CHARS,
+  nextFlowInput,
+} from './loop-helpers.js';
 
-function actionBudgetCost(toolCall: { name: string; input: Record<string, unknown> }): number {
-  if (toolCall.name !== 'burst') return 1;
-  const count = toolCall.input.count;
-  return isValidBurstCount(count) ? count : 1;
-}
-
-const DEFAULT_CONTEXT_CHECKPOINT_ACTIONS = 8;
-const MODEL_SNAPSHOT_MAX_CHARS = 18_000;
-const CHECKPOINT_ACTIONS = 10;
-const CHECKPOINT_FLOW_SUMMARY_MAX_CHARS = 500;
-const MAX_EMPTY_FLOW_ENDINGS = 3;
-
-function actionLabel(name: string): string {
-  const labels: Record<string, string> = {
-    navigate: 'Navigate',
-    click: 'Click',
-    doubleClick: 'Double click',
-    fill: 'Fill field',
-    select: 'Select option',
-    pressKey: 'Press key',
-    check: 'Check option',
-    uncheck: 'Uncheck option',
-    hover: 'Hover element',
-    dragAndDrop: 'Drag and drop',
-    waitFor: 'Wait for element',
-    reload: 'Reload page',
-    goBack: 'Go back',
-    goForward: 'Go forward',
-    setViewportSize: 'Set viewport',
-    download: 'Download file',
-    verifyExpectation: 'Verify expectation',
-  };
-  return labels[name] ?? name;
-}
-
-function actionFailureReason(error: string): string {
-  if (/strict mode violation/i.test(error)) return 'the locator matched more than one element';
-  if (/intercepts pointer events/i.test(error)) return 'another element blocked the interaction';
-  if (/timeout/i.test(error)) return 'the target did not become available in time';
-  return (error.split('\n')[0] ?? error).replace(/^locator\.[^:]+:\s*/i, '');
-}
-
-function actionDescription(name: string, input: Record<string, unknown>): string {
-  const label = actionLabel(name);
-  if (name === 'setViewportSize') return `${label} to ${input.width}x${input.height}`;
-  if (name === 'navigate') return `${label} to target page`;
-  if (name === 'dragAndDrop') return `${label} ${input.source} -> ${input.target}`;
-  if (typeof input.locator === 'string') return `${label} ${input.locator}`;
-  return label;
-}
-
-export function buildSystemPrompt(
-  maxSteps: number,
-  hasScreenshots: boolean,
-  persona?: Persona,
-  scope?: string,
-  expectations: string[] = [],
-): string {
-  const screenshotNote = hasScreenshots
-    ? '\n\nYou also get a screenshot alongside the accessibility tree after every action. Use it when an element has no useful accessible name — an icon-only button, a canvas element — to figure out what it is and where it is.'
-    : '';
-  // Any concrete examples in a persona's own goal text (a cart, an order, a wizard step) are there to
-  // illustrate the general pattern, not a description of this specific application — we have no advance
-  // knowledge of what this app actually contains, and the model must not expect those exact things to
-  // exist. Said once here rather than repeated in every persona's own text.
-  const genericAppNote = persona
-    ? `\n\nAny concrete examples above (specific field names, page types, flows) are illustrations of the general pattern you're testing for, not a description of this particular application — we have no advance knowledge of what this app actually contains. Look at what this app actually offers and adapt the pattern to it; don't expect it to literally contain the things named in the examples.`
-    : '';
-  const intro = persona
-    ? `${persona.goal}${genericAppNote}${screenshotNote}`
-    : `You are exploring a web application to find and complete as many distinct, meaningful user flows as you can — this could be anything from signing up or checking out to creating a resource, submitting a support request, or completing a multi-step workflow, depending on what the app actually offers.${screenshotNote}`;
-
-  // The default persona's own definition of "correct a validation error and resubmit" doesn't
-  // apply to personas that define their own notion of a completed attempt (e.g. one that's
-  // deliberately trying to trigger that same validation error).
-  const formCorrectionGuidance = persona
-    ? ''
-    : `\n\nIf a form submission shows an error (e.g. "already exists", a validation message) and you correct the input (e.g. filling a different value), you MUST submit that correction — click the submit/confirm button again — before moving on to a different flow. Filling a corrected value and then navigating away without submitting leaves the flow incomplete.`;
-  const meaningfulDefinition = persona
-    ? ''
-    : `\n\nA flow counts as "meaningful" and complete when it produces a real state change — something was created, submitted, updated, or confirmed — reflected by something like a confirmation message, a new page, or a changed piece of state on the page. Simply navigating somewhere to look at it is not a completed flow.`;
-  const scopeGuidance = scope
-    ? `\n\nThe user asked you to explore this scope: "${scope}". Treat it as a soft exploration mission: the current target URL is only your starting point, so navigate through the application to find the relevant area or journey even when its exact URL is unknown. Prefer meaningful flows inside this scope and avoid unrelated areas unless they are necessary to reach or understand it. Do not assume the requested area exists; if you cannot find it, do not invent a result and end with a clear summary of what was unavailable.`
-    : '';
-  const expectationGuidance = expectations.length
-    ? `\n\nThe user supplied these expectations for this scope. They are acceptance criteria, not instructions to assume success:\n${expectations.map((expectation, index) => `${index + 1}. ${expectation}`).join('\n')}\nAfter the current flow has actually performed the behavior described by an expectation, physically check it with the \`verifyExpectation\` tool before completing that flow. The evidence must be caused by the current flow itself, not merely found on a page reached by navigation. In particular, an expectation about creating, submitting, updating, completing, or confirming something requires the current flow to perform that operation first; a read-only flow that opens an existing record or displays a matching heading is not evidence of that operation. Do not verify an expectation just because the page contains similar text. You may check an expectation again only when another flow independently performs the same behavior. Use \`unknown\` only when the current flow reaches the relevant behavior but the application offers no reliable observable signal. Do not claim expectation results only in your summary.`
-    : `\n\nNo specific expectations were supplied for this scope, so there is no numbered list telling you in advance what "done" looks like — that is your call, based on what the flow actually did. Before calling \`flowComplete\` on a flow that changed or produced something (not a purely read-only look around), physically confirm that outcome with the \`verifyExpectation\` tool using whatever concrete signal actually demonstrates it — a results list is visible and non-empty, a control you changed now reflects the new state, a count changed, a value you set is shown back to you. Choose the assertion and locator yourself; since there is no numbered expectation to reference, use expectationIndex 1. This is a real check the browser performs, not a claim you get to make in your summary — an unconfirmed flow is not the same as a failed one, it just cannot become regression coverage.`;
-
-  return `${intro}${scopeGuidance}${expectationGuidance}
-
-If a cookie/consent banner, promotional overlay, or modal is blocking the page, dismiss it first (accept/close) before continuing — don't try to work around it.
-
-You have a budget of ${maxSteps} actions for this run — use as much of it as you genuinely can. You're not trying to find one happy path and stop; the goal is to exercise the application thoroughly, all the way through, so use the full budget probing it. Prioritize finishing the flow you're already on over starting a new one, and don't spend more than 2 attempts on the same stuck approach. After completing a flow, always look for another one to attempt next — vary the details: a different product or item, a different input value, a different setting or configuration option, a different path through similar functionality. Don't literally repeat a flow you already ran with the exact same inputs — that adds nothing. If you're truly out of new variations to try, a near-identical repeat is still better than stopping with budget left over, but treat that as a last resort, not the default. Don't stop just because you've covered the obvious cases.
-
-You see the page as an accessibility tree snapshot after every action. Choose exactly one tool call per turn based on the current snapshot. If that snapshot shows a loading state (a spinner, "Loading...", a skeleton placeholder) rather than the page's real content, that is not yet the answer to whatever you just tried — use \`waitFor\` on real content (or its absence) before drawing any conclusion or calling \`flowComplete\`; a conclusion based on a still-loading page is not evidence of anything.
-
-Locator syntax — this is a Playwright locator string, not a plain CSS selector:
-- To target by accessibility role and name, you MUST prefix with "role=", e.g. role=button[name="Submit"] or role=textbox[name="Email"]. A bare "textbox[name=...]" or "button[name=...]" without the "role=" prefix is invalid — "textbox" and "button" are not HTML tags, so it will never match anything and will just time out.
-- To target by visible text, use text="exact text" or text=/partial/i.
-- If a form field's role/name doesn't cleanly match it (no accessible name, or an ambiguous one), target it by its associated <label> text instead: label="Email" or label=/e-?mail/i. The same pattern works for placeholder="Search text", alt="Image description", and title="Tooltip text" when those are the only identifying attribute.
-- To target an element inside an iframe, prefix its inner locator with the frame CSS selector: frame=iframe[title="Payment"] >> role=button[name="Pay"].
-- Prefer the actual interactive element (the button or link) over a decorative child inside it (an icon or image) — clicking an <img> inside a <button> can fail because the button intercepts the click. If an element has a role in the snapshot (e.g. "button "Menu""), target it with role=button[name="Menu"], not the icon inside it.
-- If a locator resolves to more than one element (ambiguous), make it more specific — add text, narrow the role, or use >> nth=N — rather than repeating the same locator.
-- Locator priority: prefer a stable data-testid, then a stable id or app-owned attribute, then role plus accessible name, then stable visible text, then a CSS structure selector. Use CSS when the application is built from non-semantic elements such as clickable divs, but avoid generated class names and layout-dependent selectors when a stable attribute exists.
-- An id or attribute that encodes one specific record from live, frequently-changing data (a search result, a price, a schedule entry, a queue position — often a long generated number) is not a stable locator: the exact same search or query run again later can return different underlying records with different ids, even though the application behaved correctly both times. For a \`verifyExpectation\` or any check you intend to still hold on a later run, target that content positionally or structurally instead (e.g. the first result inside its list/table container, a heading scoped by \`nth=0\`) rather than by that record's own id.
-- The interactive-elements section is a compact DOM supplement, not a second accessibility tree. Use its locator hints for div-only controls, and use the screenshot when the element is visible but has no reliable semantic or stable DOM signal. Each line has the shape role "name" | locator: value | href: url — the human-readable role "name" part at the start is there so you can identify the element, not something to send as a locator. Only the string after "locator:" is a valid locator; e.g. from the line link "View products" | locator: [data-testid="navbar-products-link"] | href: /catalog, the locator to use is [data-testid="navbar-products-link"], not link "View products" — that whole phrase is not Playwright syntax and will fail to parse.
-
-When something fails twice in a row, don't just retry the same idea with small tweaks — change strategy. Try a different path through the page (scroll for more content, navigate directly to a likely URL, go back and take a different link) instead of only adjusting the locator syntax.${formCorrectionGuidance}${meaningfulDefinition}
-
-Some browser requests may be intentionally blocked by Appwalk's safety policy. If a tool result says a request was safety-blocked, that request was not sent and the action may not have changed application state. Do not retry the same blocked action repeatedly; choose a safe read-only path or clearly treat the attempted flow as incomplete.
-
-When you believe you have completed a full, meaningful flow, call the \`flowComplete\` tool immediately with a short summary of what you did — don't continue exploratory actions after reaching that flow's terminal success state. If you want to test a follow-up scenario, close the current flow first; if action budget remains, you'll be taken back to the starting page to look for a different flow. Reach for a genuinely different variation (different data, different option, different area of the app) before settling for a near-identical repeat. Never end your turn with plain text while budget remains; only stop early if the app itself is completely broken or unreachable.`;
-}
-
-export interface LoopStep {
-  toolCall?: { name: string; input: Record<string, unknown> };
-  result?: StepResult;
-  error?: string;
-  finalText?: string;
-  safetyBlocked?: number;
-}
-
-export interface FlowResult {
-  /** Indices into the returned `history` array — inclusive range covering just this flow's steps. */
-  startIndex: number;
-  endIndex: number;
-  finalText: string;
-  title?: string;
-  verified: boolean;
-  /** URL captured at the flow's starting point, which may differ from the CLI's root URL. */
-  startUrl: string;
-  /** JSON-serialized browser storage captured when this flow began, for deterministic replay. */
-  startStorageState: string;
-}
-
-export type LoopStopReason = 'completed' | 'agent_stopped' | 'budget_exhausted' | 'no_progress';
-
-export interface LoopResult {
-  history: LoopStep[];
-  /** One entry per flow the agent completed (via `flowComplete`, or by ending its turn in plain text). */
-  flows: FlowResult[];
-  /** True if the loop stopped because it ran out of step budget. */
-  exhausted: boolean;
-  stopReason: LoopStopReason;
-  expectationResults: ExpectationResult[];
-  /** The page actually active when the loop ended — the same page it was called with, unless an action
-   * (a new tab, a reopened browser) switched it. The caller must close this page's browser, not
-   * necessarily the one it originally passed in. */
-  finalPage: Page;
-}
-
-export interface ExpectationResult {
-  expectationIndex: number;
-  text: string;
-  status: ExpectationStatus;
-  observations: Array<ExpectationObservation & { flowIndex: number; historyIndex: number }>;
-}
-
-function aggregateExpectationResults(
-  expectations: string[],
-  observations: Array<ExpectationObservation & { flowIndex: number; historyIndex: number }>,
-): ExpectationResult[] {
-  return expectations.map((text, index) => {
-    const matching = observations.filter((observation) => observation.expectationIndex === index + 1);
-    const status = matching.some((observation) => observation.status === 'violated')
-      ? 'violated'
-      : matching.some((observation) => observation.status === 'met')
-        ? 'met'
-        : 'unknown';
-    return { expectationIndex: index + 1, text, status, observations: matching };
-  });
-}
-
-// Checks result *presence*, not field truthiness — a step with a real but empty snapshot must not be
-// skipped; only a step with no result at all (an error) falls through to an earlier entry.
-function lastKnownUrl(history: LoopStep[], fallback: string): string {
-  for (let i = history.length - 1; i >= 0; i--) {
-    const result = history[i]?.result;
-    if (result) return result.url;
-  }
-  return fallback;
-}
-
-function lastKnownSnapshot(history: LoopStep[]): string {
-  for (let i = history.length - 1; i >= 0; i--) {
-    const result = history[i]?.result;
-    if (result) return result.snapshot;
-  }
-  return '';
-}
-
-function clipForCheckpoint(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  const headChars = Math.floor(maxChars * 0.7);
-  const tailChars = maxChars - headChars;
-  return `${value.slice(0, headChars)}\n...[snapshot clipped]...\n${value.slice(-tailChars)}`;
-}
-
-function checkpointInput(
-  history: LoopStep[],
-  flowStartIndex: number,
-  currentSnapshot: StepResult,
-  flows: FlowResult[],
-  remainingSteps: number,
-): string {
-  const recentActions = history
-    .slice(Math.max(flowStartIndex, history.length - CHECKPOINT_ACTIONS))
-    .map((step, index) => {
-      const action = step.toolCall ? `${step.toolCall.name} ${JSON.stringify(step.toolCall.input)}` : '(no tool call)';
-      const outcome = step.error ? `error: ${step.error}` : step.result ? `URL: ${step.result.url}` : 'no result';
-      return `${index + 1}. ${clipForCheckpoint(action, 900)} -> ${clipForCheckpoint(outcome, 500)}`;
-    })
-    .join('\n');
-  const completedFlows = flows
-    .slice(-5)
-    .map(
-      (flow, index) =>
-        `${index + 1}. ${clipForCheckpoint(flow.title ?? flow.finalText, CHECKPOINT_FLOW_SUMMARY_MAX_CHARS)}`,
-    )
-    .join('\n');
-
-  return `Context checkpoint. Continue the same browser exploration from the current page; browser state and the action evidence are preserved. Do not repeat completed actions just because the conversation was compacted. Choose exactly one next tool call.
-
-Completed flows:
-${completedFlows || '(none)'}
-
-Recent actions in the current flow:
-${recentActions || '(none)'}
-
-Current page:
-URL: ${currentSnapshot.url}
-  ${clipForCheckpoint(currentSnapshot.snapshot, MODEL_SNAPSHOT_MAX_CHARS)}
-
-Remaining loop budget: ${remainingSteps} steps.`;
-}
-
-function nextFlowInput(flows: FlowResult[], currentSnapshot: StepResult, remainingSteps: number): string {
-  const completedFlows = flows
-    .slice(-5)
-    .map(
-      (flow, index) =>
-        `${index + 1}. ${clipForCheckpoint(flow.title ?? flow.finalText, CHECKPOINT_FLOW_SUMMARY_MAX_CHARS)}`,
-    )
-    .join('\n');
-  return `A previous flow is complete. Start a genuinely different flow from the current starting page. Do not repeat a completed flow or its exact inputs. Choose exactly one next tool call.
-
-Completed flows:
-${completedFlows || '(none)'}
-
-Current page:
-URL: ${currentSnapshot.url}
-${clipForCheckpoint(currentSnapshot.snapshot, MODEL_SNAPSHOT_MAX_CHARS)}
-
-Remaining loop budget: ${remainingSteps} steps.`;
-}
+export { buildSystemPrompt } from './system-prompt.js';
+export type { ExpectationResult, FlowResult, LoopResult, LoopStep, LoopStopReason } from './loop-types.js';
 
 export async function runAgentLoop(
   page: Page,
