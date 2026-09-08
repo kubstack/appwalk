@@ -370,7 +370,12 @@ export async function runAgentLoop(
     const isFlowCompleteTool = turn.type === 'tool_call' && turn.toolCall.name === 'flowComplete';
 
     if (turn.type === 'text') {
-      const stopStep: LoopStep = { finalText: redactor.text(turn.text), result: await toStepResult(page, redactor) };
+      // An empty turn.text (e.g. the model's final reply when the budget ran out mid-turn) must
+      // stay undefined, not '' — evidence.jsonl itself requires finalText to be non-empty when
+      // present, and `flow.title ?? flow.finalText` elsewhere would otherwise resolve to '' instead
+      // of falling through, since `??` treats an empty string as present.
+      const finalText = turn.text.trim() ? redactor.text(turn.text) : undefined;
+      const stopStep: LoopStep = { finalText, result: await toStepResult(page, redactor) };
       history.push(stopStep);
       options.onStep?.(stopStep, history.length - 1, flowIndex);
       options.logger?.warn(
