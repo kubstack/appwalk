@@ -78,13 +78,20 @@ Open `report.html` first. It is the human-facing result. The same directory cont
 
 ## 5. Run generated tests
 
-Generated tests use `@playwright/test` and are independent tests, one per confirmed flow. Run one generated spec with:
+Generated tests use `playwright/test`, the test runner bundled with the `playwright` package, and are independent tests, one per confirmed flow. Running a generated spec needs a local `playwright` install reachable from that directory (a global `npm install -g`/`npx` install does not satisfy `import` resolution). If the target directory has no Node project yet:
+
+```bash
+npm init -y
+npm install -D playwright
+```
+
+Then run one generated spec with:
 
 ```bash
 npx playwright test ./appwalk-output/<execution-id>/discovered.spec.ts
 ```
 
-The generated suite may include a sibling `auth.ts` helper and a local `.secrets.json` file for credential login, a local `.storage-state.json` copy for `--storage-state`, and captured response fixtures. These files make the suite runnable immediately, are ignored by Git, and must not be committed. In CI, use fresh credentials or an explicit storage state instead. Treat the generated files as source code: review them and place them in the appropriate test project.
+The generated suite always includes a sibling `consent.ts` helper that dismisses a known consent-management-platform banner (Didomi, OneTrust, Cookiebot, and a few others) right after navigating, the same way Appwalk itself does during exploration and replay — it carries no secrets, so unlike the files below it is ordinary generated source, not something to git-ignore. It may also include a sibling `auth.ts` helper and a local `.secrets.json` file for credential login, a local `.storage-state.json` copy for `--storage-state`, and captured response fixtures. These files make the suite runnable immediately, are ignored by Git, and must not be committed. In CI, use fresh credentials or an explicit storage state instead. Treat the generated files as source code: review them and place them in the appropriate test project.
 
 ## 6. Use a focused exploration
 

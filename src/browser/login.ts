@@ -3,6 +3,7 @@ import { toStepResult } from './snapshot.js';
 import type { StepResult } from '../types.js';
 import type { Logger } from '../logging/logger.js';
 import { LOGIN_CONTRACT } from './login-contract.js';
+import { dismissKnownConsentBanner } from './consent.js';
 
 async function findByLabelOrRole(root: Page | Locator, ...patterns: RegExp[]): Promise<Locator | null> {
   for (const pattern of patterns) {
@@ -30,6 +31,8 @@ export async function login(
 ): Promise<StepResult> {
   logger?.debug('auth.login_started', 'Login started', { url });
   await page.goto(url);
+  // A consent banner can cover the login form itself, so it must clear before looking for one.
+  await dismissKnownConsentBanner(page);
   const initialUrl = page.url();
 
   let passwordField = page.locator(LOGIN_CONTRACT.passwordSelector).first();

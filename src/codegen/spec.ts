@@ -3,10 +3,19 @@ import { assertValidBurstCount } from '../limits.js';
 import { type ResponseFixture, type ResponseVariant } from '../response/variants.js';
 import { escapeJsString, serializeJsValue, toLocatorExpression } from './locator.js';
 import { assertValidWebUrl } from '../url.js';
-import { LOGIN_CONTRACT } from '../browser/login-contract.js';
 import { TOOL_DEFINITIONS } from '../agent/tools.js';
 import { validateToolInput } from '../agent/validation.js';
 import type { ExpectationObservation } from '../types.js';
+import {
+  GENERATED_CREDENTIALS_FILE,
+  GENERATED_STORAGE_STATE_FILE,
+  GENERATED_FLOW_STORAGE_STATE_PREFIX,
+} from './generated-file-names.js';
+import { GENERATED_CONSENT_HELPER } from './templates/consent-template.js';
+import { GENERATED_AUTH_HELPER } from './templates/auth-template.js';
+import { GENERATED_FIXTURES_HELPER } from './templates/fixtures-template.js';
+
+export { GENERATED_CREDENTIALS_FILE, GENERATED_STORAGE_STATE_FILE, GENERATED_FLOW_STORAGE_STATE_PREFIX };
 
 export interface CodegenOptions {
   url: string;
@@ -95,261 +104,21 @@ export function formatTestTitle(name: string): string {
   return shortened || 'Verified user flow';
 }
 
-// Generated login stays standalone for the user's test project. Its selectors and route rules
-// come from LOGIN_CONTRACT, so the runtime and generated helper share the same login assumptions.
-// English label text only works on English-language UIs; HTML input types are language-independent,
-// so structural signals are tried first, with English text as a fallback.
-export const GENERATED_CREDENTIALS_FILE = '.secrets.json';
-export const GENERATED_STORAGE_STATE_FILE = '.storage-state.json';
-
-const GENERATED_AUTH_HELPER = `import type { Locator, Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-type Credentials = { username: string; password: string };
-
-function readLocalCredentials(): Credentials | null {
-  const credentialsPath = join(dirname(fileURLToPath(import.meta.url)), '${GENERATED_CREDENTIALS_FILE}');
+/** True only when there is something in the flow's captured storage worth preloading — most flows
+ * after the first carry forward an unchanged, empty snapshot, and generating a same-origin context
+ * override plus a sidecar file for that would be pure noise. */
+function hasMeaningfulStorageState(json: string | undefined): boolean {
+  if (!json) return false;
   try {
-    const parsed = JSON.parse(readFileSync(credentialsPath, 'utf8')) as Partial<Credentials>;
-    if (typeof parsed.username !== 'string' || typeof parsed.password !== 'string') {
-      throw new Error('must contain string username and password fields');
-    }
-    return { username: parsed.username, password: parsed.password };
-  } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return null;
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error('Unable to read ${GENERATED_CREDENTIALS_FILE}: ' + detail);
+    const parsed = JSON.parse(json) as { cookies?: unknown[]; origins?: { localStorage?: unknown[] }[] };
+    return (
+      (parsed.cookies?.length ?? 0) > 0 ||
+      (parsed.origins?.some((origin) => (origin.localStorage?.length ?? 0) > 0) ?? false)
+    );
+  } catch {
+    return false;
   }
 }
-
-function readCredentials(): Credentials {
-  const localCredentials = readLocalCredentials();
-  if (localCredentials) return localCredentials;
-
-  const username = process.env.APPWALK_USERNAME;
-  const password = process.env.APPWALK_PASSWORD;
-  if (username && password) return { username, password };
-  throw new Error('Credentials not found. Keep ${GENERATED_CREDENTIALS_FILE} next to auth.ts or set APPWALK_USERNAME and APPWALK_PASSWORD.');
-}
-
-async function findLoginField(root: Page | Locator, ...patterns: RegExp[]): Promise<Locator | null> {
-  for (const pattern of patterns) {
-    const byLabel = root.getByLabel(pattern);
-    if ((await byLabel.count()) > 0) return byLabel.first();
-  }
-  for (const pattern of patterns) {
-    const byRole = root.getByRole('textbox', { name: pattern });
-    if ((await byRole.count()) > 0) return byRole.first();
-  }
-  return null;
-}
-
-export async function loginWithCredentials(page: Page, username: string, password: string): Promise<void> {
-  let passwordField = page.locator('${LOGIN_CONTRACT.passwordSelector}').first();
-  if ((await passwordField.count()) === 0) {
-    const loginTrigger = page.getByRole('button', { name: /${LOGIN_CONTRACT.triggerPattern}/i })
-      .or(page.getByRole('link', { name: /${LOGIN_CONTRACT.triggerPattern}/i })).first();
-    if ((await loginTrigger.count()) > 0) {
-      await loginTrigger.click();
-      await passwordField.waitFor({ state: 'visible' });
-    }
-  }
-  const loginPageUrl = page.url();
-  if ((await passwordField.count()) === 0) {
-    const byLabel = await findLoginField(page, /password/i);
-    if (!byLabel) throw new Error('Login form not found. Use --storage-state if the site uses SSO, 2FA, or has no password login.');
-    passwordField = byLabel;
-  }
-
-  const form = page.locator('${LOGIN_CONTRACT.formSelector}').first();
-  const loginScope = (await form.count()) > 0
-    ? form
-    : passwordField.locator("xpath=ancestor::*[.//button or .//input[@type='submit']][1]");
-
-  let usernameField = loginScope.locator('${LOGIN_CONTRACT.usernameSelector}').first();
-  if ((await usernameField.count()) === 0) {
-    const byLabel = await findLoginField(loginScope, /username/i, /e-?mail/i);
-    if (byLabel) {
-      usernameField = byLabel;
-    } else {
-      usernameField = loginScope.locator('${LOGIN_CONTRACT.usernameFallbackSelector}').first();
-    }
-  }
-
-  await usernameField.fill(username);
-  await passwordField.fill(password);
-
-  const loginPattern = /${LOGIN_CONTRACT.triggerPattern}/i;
-  const localLoginButtons = loginScope.getByRole('button', { name: loginPattern });
-  if ((await localLoginButtons.count()) > 0) {
-    await localLoginButtons.last().click();
-  } else {
-    const formSubmit = loginScope.locator('${LOGIN_CONTRACT.submitSelector}').first();
-    if ((await formSubmit.count()) > 0) {
-      await formSubmit.click();
-    } else {
-      const pageLoginButtons = page.getByRole('button', { name: loginPattern });
-      if ((await pageLoginButtons.count()) === 0) {
-        throw new Error('Login submit control not found. Use --storage-state if the site uses a custom login flow.');
-      }
-      await pageLoginButtons.last().click();
-    }
-  }
-
-  await Promise.race([
-    page.waitForURL((nextUrl: URL) => nextUrl.toString() !== loginPageUrl, { timeout: 10000 }),
-    passwordField.waitFor({ state: 'hidden', timeout: 10000 }),
-  ]).catch(() => undefined);
-
-  let stillOnPasswordField = await page
-    .locator('${LOGIN_CONTRACT.passwordSelector}')
-    .first()
-    .isVisible()
-    .catch(() => false);
-  if (stillOnPasswordField && page.url() !== loginPageUrl) {
-    await page.locator('${LOGIN_CONTRACT.passwordSelector}').first().waitFor({ state: 'hidden', timeout: 10000 }).catch(() => undefined);
-    stillOnPasswordField = await page
-      .locator('${LOGIN_CONTRACT.passwordSelector}')
-      .first()
-      .isVisible()
-      .catch(() => false);
-  }
-  const finalPath = new URL(page.url()).pathname.toLowerCase();
-  const remainsOnLoginRoute = /${LOGIN_CONTRACT.loginRoutePattern}/.test(finalPath);
-  if (stillOnPasswordField || page.url() === loginPageUrl || remainsOnLoginRoute) {
-    const message = stillOnPasswordField
-      ? 'Login did not complete. Check credentials or use --storage-state for 2FA, SSO, or CAPTCHA.'
-      : 'Login outcome could not be verified. Use --storage-state if the app keeps the login route after authentication.';
-    throw new Error(message);
-  }
-}
-
-export async function loginWithConfiguredCredentials(page: Page): Promise<void> {
-  const { username, password } = readCredentials();
-  await loginWithCredentials(page, username, password);
-}`;
-
-const GENERATED_FIXTURES_HELPER = `import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { BrowserContext } from '@playwright/test';
-
-type ResponseFixture = {
-  method: string;
-  url: string;
-  occurrence?: number;
-  urlPattern?: string;
-  status: number;
-  body: unknown;
-};
-
-type ResponsePatch = { path: string; value: unknown };
-type VariantScenario = {
-  base: string;
-  sourceMethod?: string;
-  sourceUrl: string;
-  sourceOccurrence?: number;
-  patches: ResponsePatch[];
-};
-type FixtureQueue = { items: ResponseFixture[]; next: number };
-
-const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
-
-function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, 'utf8')) as T;
-}
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function parsePath(path: string): Array<string | number> | null {
-  if (path === '$' || !path.startsWith('$')) return null;
-  const tokens: Array<string | number> = [];
-  let offset = 1;
-  while (offset < path.length) {
-    if (path[offset] === '.') {
-      const match = /^\\.([A-Za-z_][A-Za-z0-9_-]*)/.exec(path.slice(offset));
-      if (!match) return null;
-      tokens.push(match[1]!);
-      offset += match[0].length;
-      continue;
-    }
-    if (path[offset] === '[') {
-      const match = /^\\[(\\d+)\\]/.exec(path.slice(offset));
-      if (!match) return null;
-      tokens.push(Number(match[1]));
-      offset += match[0].length;
-      continue;
-    }
-    return null;
-  }
-  return tokens.length > 0 ? tokens : null;
-}
-
-function setExistingJsonPath(root: unknown, path: string, value: unknown): boolean {
-  const tokens = parsePath(path);
-  if (!tokens) return false;
-  let current: unknown = root;
-  for (let index = 0; index < tokens.length - 1; index += 1) {
-    const token = tokens[index]!;
-    if (current === null || typeof current !== 'object' || !(token in current)) return false;
-    current = (current as Record<string | number, unknown>)[token];
-  }
-  const last = tokens[tokens.length - 1]!;
-  if (current === null || typeof current !== 'object' || !(last in current)) return false;
-  (current as Record<string | number, unknown>)[last] = clone(value);
-  return true;
-}
-
-export function loadScenario(name: string): ResponseFixture[] {
-  const source = readJson<ResponseFixture[] | VariantScenario>(join(fixtureDirectory, name + '.json'));
-  if (Array.isArray(source)) return source;
-  const fixtures = readJson<ResponseFixture[]>(join(fixtureDirectory, source.base)).map((fixture) => ({ ...fixture, body: clone(fixture.body) }));
-  const matches = fixtures.filter((fixture) => fixture.url === source.sourceUrl && (!source.sourceMethod || fixture.method === source.sourceMethod));
-  const target = source.sourceOccurrence === undefined
-    ? matches.length === 1 ? matches[0] : undefined
-    : matches.find((fixture) => fixture.occurrence === source.sourceOccurrence);
-  if (!target) throw new Error('Response variant could not locate its captured source response.');
-  for (const patch of source.patches) {
-    if (!setExistingJsonPath(target.body, patch.path, patch.value)) {
-      throw new Error('Response variant patch could not be applied: ' + patch.path);
-    }
-  }
-  return fixtures;
-}
-
-export async function installFixtures(context: BrowserContext, fixtures: ResponseFixture[]): Promise<void> {
-  const patternGroups = new Map<string, ResponseFixture[]>();
-  for (const fixture of fixtures) {
-    const pattern = fixture.urlPattern ?? fixture.url;
-    const group = patternGroups.get(pattern) ?? [];
-    group.push(fixture);
-    patternGroups.set(pattern, group);
-  }
-  for (const [pattern, group] of patternGroups) {
-    const exactQueues = new Map<string, FixtureQueue>();
-    for (const fixture of group) {
-      const exactKey = fixture.method + ' ' + fixture.url;
-      const exactQueue = exactQueues.get(exactKey) ?? { items: [], next: 0 };
-      exactQueue.items.push(fixture);
-      exactQueues.set(exactKey, exactQueue);
-    }
-    await context.route(pattern, async (route) => {
-      const method = route.request().method();
-      const queue = exactQueues.get(method + ' ' + route.request().url());
-      if (!queue || queue.items.length === 0) {
-        await route.continue();
-        return;
-      }
-      const fixture = queue.items[Math.min(queue.next++, queue.items.length - 1)]!;
-      await route.fulfill({ status: fixture.status, contentType: 'application/json', body: JSON.stringify(fixture.body) });
-    });
-  }
-}
-`;
 
 function actionToStatement(
   name: string,
@@ -533,7 +302,7 @@ function expectationToStatement(entry: EvidenceEntry): string | null {
         : null;
     case 'urlContains':
       return observation.value !== undefined
-        ? `await expect(page).toHaveURL(new RegExp('${escapeJsString(observation.value)}'));`
+        ? `await expect(page).toHaveURL(new RegExp('${escapeJsString(escapeRegExp(observation.value))}'));`
         : null;
     case 'urlEquals':
       return observation.value !== undefined
@@ -615,6 +384,10 @@ function codegenViewportDimension(value: unknown, name: string): number {
   return dimension;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Picks the flow's confirmation assertion from the last successful step — prefers a heading (usually the clearest "this is done" signal), falls back to the final URL. */
 function findConfirmationAssertion(entries: EvidenceEntry[]): string | null {
   const lastWithResult = [...entries].reverse().find((e) => e.result);
@@ -627,9 +400,25 @@ function findConfirmationAssertion(entries: EvidenceEntry[]): string | null {
     // A literal single quote inside the heading text gets YAML-doubled to avoid ending the outer
     // single-quoted wrapper early — undo it, or the assertion targets text the page never renders.
     const headingText = headingMatch[1]!.replace(/''/g, "'");
-    return `await expect(page.getByRole('heading', { name: '${escapeJsString(headingText)}' })).toBeVisible();`;
+    // exact: true matters here specifically: getByRole's default name match is a case-insensitive
+    // substring, and this heading text is often the literal search keyword just typed — which is
+    // then guaranteed to also appear inside every individual result's own title on that same page,
+    // turning a plain substring match into a strict-mode violation (resolves to multiple elements).
+    return `await expect(page.getByRole('heading', { name: '${escapeJsString(headingText)}', exact: true })).toBeVisible();`;
   }
-  return `await expect(page).toHaveURL('${escapeJsString(lastWithResult.result.url)}');`;
+
+  // Match origin+pathname only, not the full URL: many sites encode a search timestamp or other
+  // request-specific state into the query string, so an exact-URL assertion recorded at discovery
+  // time is guaranteed to fail on every later replay even though the flow still lands on the right page.
+  const finalUrl = lastWithResult.result.url;
+  let matchTarget = finalUrl;
+  try {
+    const parsed = new URL(finalUrl);
+    matchTarget = parsed.origin + parsed.pathname;
+  } catch {
+    // Keep the full string if it doesn't parse as a URL.
+  }
+  return `await expect(page).toHaveURL(new RegExp('^${escapeJsString(escapeRegExp(matchTarget))}(?:[?#]|$)'));`;
 }
 
 function flowToTest(
@@ -637,6 +426,7 @@ function flowToTest(
   options: CodegenOptions,
   testTitle = formatTestTitle(flow.title ?? flow.name),
   fixtureScenario?: string,
+  flowStorageStateArtifact?: string,
 ): string {
   const toolCalls = flow.entries.filter(
     (entry) => entry.toolCall && !entry.error && entry.toolCall.name !== 'flowComplete',
@@ -694,30 +484,38 @@ function flowToTest(
   );
   // A device profile is a newContext()-time-only option (viewport alone can change mid-session,
   // but user agent/touch/scale factor cannot) — a flow discovered under one needs its own explicit
-  // context too, exactly like storageState, even when it has no storageState of its own.
-  const needsOwnContext = Boolean(flow.devicePreset);
+  // context too, exactly like storageState, even when it has no storageState of its own. A flow
+  // with its own captured storageState needs the same, for the same reason as a device profile.
+  const needsOwnContext = Boolean(flow.devicePreset) || Boolean(flowStorageStateArtifact);
   const fixtureParams =
     needsOwnContext || needsBrowserFixture ? (needsOwnContext ? '{ browser }' : '{ page, browser }') : '{ page }';
   const setupNavigationLines =
     options.username && options.password
       ? [
           `await page.goto('${escapeJsString(options.url)}');`,
+          // A consent banner can cover the login form itself, so it must clear before login looks for one.
+          'await dismissConsentBanner(page);',
           'await loginWithConfiguredCredentials(page);',
           ...(flow.startUrl && flow.startUrl !== options.url
-            ? [`await page.goto('${escapeJsString(flow.startUrl)}');`]
+            ? [`await page.goto('${escapeJsString(flow.startUrl)}');`, 'await dismissConsentBanner(page);']
             : []),
         ]
-      : [`await page.goto('${escapeJsString(flow.startUrl ?? options.url)}');`];
+      : [`await page.goto('${escapeJsString(flow.startUrl ?? options.url)}');`, 'await dismissConsentBanner(page);'];
   if (needsOwnContext) {
     const contextOptionEntries = [
       ...(flow.devicePreset ? [`...devices['${escapeJsString(flow.devicePreset)}']`] : []),
-      ...(options.storageStatePath
-        ? [
-            options.storageStateArtifactPath
-              ? `storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}')`
-              : `storageState: '${escapeJsString(options.storageStatePath)}'`,
-          ]
-        : []),
+      // A flow's own captured storageState reflects exactly what it was verified against, and
+      // takes priority over the global one — the same rule the live replay already follows
+      // (see replay-execution.ts's flowStorageState).
+      ...(flowStorageStateArtifact
+        ? [`storageState: join(generatedSuiteDirectory, '${escapeJsString(flowStorageStateArtifact)}')`]
+        : options.storageStatePath
+          ? [
+              options.storageStateArtifactPath
+                ? `storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}')`
+                : `storageState: '${escapeJsString(options.storageStatePath)}'`,
+            ]
+          : []),
     ];
     const contextOptions = contextOptionEntries.length ? `{ ${contextOptionEntries.join(', ')} }` : '';
     const indentedBody = body
@@ -852,27 +650,42 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
   const hasFixtures = fixturePlan.artifacts.length > 0;
   const hasDeviceProfile = flows.some((flow) => Boolean(flow.devicePreset));
   const hasDownload = flows.some((flow) => flow.entries.some((entry) => entry.toolCall?.name === 'download'));
+  // index+1, zero-padded to match the flow-NNN convention planFixtureScenarios already uses.
+  const flowStorageStateArtifacts = new Map<number, string>();
+  flows.forEach((flow, index) => {
+    if (hasMeaningfulStorageState(flow.startStorageState)) {
+      flowStorageStateArtifacts.set(
+        index,
+        `${GENERATED_FLOW_STORAGE_STATE_PREFIX}${String(index + 1).padStart(3, '0')}.json`,
+      );
+    }
+  });
 
   const parts: string[] = [
     hasDeviceProfile
-      ? "import { test, expect, devices } from '@playwright/test';"
-      : "import { test, expect } from '@playwright/test';",
+      ? "import { test, expect, devices } from 'playwright/test';"
+      : "import { test, expect } from 'playwright/test';",
+    // Unconditional, unlike auth.ts/fixtures.ts: whether the target needs a cookie/consent banner
+    // dismissed has nothing to do with whether it has login or captured response fixtures.
+    "import { dismissConsentBanner } from './consent.js';",
   ];
   if (hasLogin) parts.push("import { loginWithConfiguredCredentials } from './auth.js';");
   if (hasFixtures) parts.push("import { installFixtures, loadScenario } from './fixtures.js';");
   if (hasDownload) parts.push("import { stat } from 'node:fs/promises';");
 
+  // Needed either for the one global test.use() below, or for any per-flow storageState context
+  // option — both reference the same generatedSuiteDirectory helper.
+  if ((hasStorageState && options.storageStateArtifactPath) || flowStorageStateArtifacts.size > 0) {
+    parts.push("import { dirname, join } from 'node:path';");
+    parts.push("import { fileURLToPath } from 'node:url';");
+    parts.push('const generatedSuiteDirectory = dirname(fileURLToPath(import.meta.url));');
+  }
   if (hasStorageState) {
-    if (options.storageStateArtifactPath) {
-      parts.push("import { dirname, join } from 'node:path';");
-      parts.push("import { fileURLToPath } from 'node:url';");
-      parts.push('const generatedSuiteDirectory = dirname(fileURLToPath(import.meta.url));');
-      parts.push(
-        `test.use({ storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}') });`,
-      );
-    } else {
-      parts.push(`test.use({ storageState: '${escapeJsString(options.storageStatePath!)}' });`);
-    }
+    parts.push(
+      options.storageStateArtifactPath
+        ? `test.use({ storageState: join(generatedSuiteDirectory, '${escapeJsString(options.storageStateArtifactPath)}') });`
+        : `test.use({ storageState: '${escapeJsString(options.storageStatePath!)}' });`,
+    );
   }
   const baseTitleCounts = new Map<string, number>();
   for (const flow of flows) {
@@ -892,12 +705,23 @@ export function generateSpecBundle(flows: FlowEntries[], options: CodegenOptions
       testTitle = `${titleRoot} (${suffix++})`;
     }
     usedTitles.add(testTitle);
-    parts.push(flowToTest(flow, options, testTitle, fixturePlan.scenarioNames[index]));
+    parts.push(
+      flowToTest(flow, options, testTitle, fixturePlan.scenarioNames[index], flowStorageStateArtifacts.get(index)),
+    );
   }
+
+  const flowStorageStateFiles: GeneratedSpecArtifact[] = flows.flatMap((flow, index) => {
+    const relativePath = flowStorageStateArtifacts.get(index);
+    if (!relativePath) return [];
+    const content = JSON.stringify(JSON.parse(flow.startStorageState!), null, 2) + '\n';
+    return [{ relativePath, content }];
+  });
 
   return {
     spec: parts.join('\n\n') + '\n',
     artifacts: [
+      { relativePath: 'consent.ts', content: GENERATED_CONSENT_HELPER },
+      ...flowStorageStateFiles,
       ...(hasLogin
         ? [
             { relativePath: 'auth.ts', content: GENERATED_AUTH_HELPER },

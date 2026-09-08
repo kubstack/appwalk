@@ -53,6 +53,28 @@ test('stops on plain provider text without inventing a flow', async () => {
   }
 });
 
+class EmptyTextProvider implements LlmProvider {
+  async start(): Promise<ProviderTurn> {
+    return { type: 'text', text: '' };
+  }
+  async continue(): Promise<ProviderTurn> {
+    return { type: 'text', text: '' };
+  }
+}
+
+test('an empty final turn (e.g. budget exhausted mid-turn) leaves finalText undefined, not an empty string', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<main><h1>Example</h1></main>');
+    const result = await runAgentLoop(page, new EmptyTextProvider(), { maxSteps: 5 });
+    assert.equal(result.history.length, 1);
+    assert.equal(result.history[0]?.finalText, undefined);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('charges every burst repetition against the agent action budget', async () => {
   const browser = await chromium.launch({ headless: true });
   try {

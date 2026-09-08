@@ -10,6 +10,15 @@ npx -p @kubstack/appwalk -- playwright install chromium
 
 See [Getting started](getting-started.md#1-install) for why `-p @kubstack/appwalk --` matters here.
 
+## `Cannot find module 'playwright/test'` when running a generated spec
+
+A global or `npx`-run install of Appwalk (or Playwright) does not make `playwright/test` resolvable by `import`/`require` from an arbitrary directory; Node only resolves a bare specifier through a `node_modules` folder that is an ancestor of the file doing the importing. Install `playwright` locally in the directory tree where the generated spec lives:
+
+```bash
+npm init -y
+npm install -D playwright
+```
+
 ## `Missing provider` or `Missing model`
 
 Provider and model are mandatory. Pass them directly or define both in a config file that is explicitly supplied with `--config`.
