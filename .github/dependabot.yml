@@ -5,7 +5,31 @@ updates:
     schedule:
       interval: 'weekly'
     open-pull-requests-limit: 10
+    # Conventional Commit prefixes that release-please understands:
+    # runtime deps → "fix(deps): ..." (triggers a patch release),
+    # dev deps → "chore(deps-dev): ..." (no release on its own).
+    commit-message:
+      prefix: 'fix'
+      prefix-development: 'chore'
+      include: 'scope'
+    # One PR per group instead of one PR per package, so the lockfile
+    # doesn't conflict after every merge. Major bumps stay separate.
+    groups:
+      production:
+        dependency-type: 'production'
+        update-types: ['minor', 'patch']
+      development:
+        dependency-type: 'development'
+        update-types: ['minor', 'patch']
+    ignore:
+      # TypeScript 7 (native compiler) is not supported by typescript-eslint
+      # or rolldown-plugin-dts yet, and tests use the TS 5 compiler API.
+      - dependency-name: 'typescript'
+        versions: ['>=7']
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
