@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Entries below are generated and maintained by [release-please](https://github.com/googleapis/release-please) from Conventional Commits PR titles. See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
+## [0.3.1](https://github.com/kubstack/appwalk/compare/v0.3.0...v0.3.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **deps:** update dependencies ([#42](https://github.com/kubstack/appwalk/issues/42)) ([dd94937](https://github.com/kubstack/appwalk/commit/dd94937262d397d873e752217dc6e4b83d185340))
+
 ## [0.3.0](https://github.com/kubstack/appwalk/compare/v0.2.3...v0.3.0) (2026-09-08)
 
 
